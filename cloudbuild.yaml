@@ -1,0 +1,30 @@
+# Cloud Build：建置並推送至 Container Registry（gcr.io）
+# 本機觸發：
+#   gcloud builds submit --config cloudbuild.yaml .
+#
+# 部署到 Cloud Run（範例）：
+#   gcloud run deploy cron-services \
+#     --image "gcr.io/${PROJECT_ID}/cron-services" \
+#     --region asia-east1 \
+#     --platform managed \
+#     --allow-unauthenticated \
+#     --set-env-vars "GCS_BUCKET=...,KEYSTONE_GQL_ENDPOINT=..."
+
+steps:
+  - name: "gcr.io/cloud-builders/docker"
+    args:
+      - "build"
+      - "-t"
+      - "gcr.io/$PROJECT_ID/cron-services"
+      - "."
+
+  - name: "gcr.io/cloud-builders/docker"
+    args:
+      - "push"
+      - "gcr.io/$PROJECT_ID/cron-services"
+
+images:
+  - "gcr.io/$PROJECT_ID/cron-services"
+
+options:
+  logging: CLOUD_LOGGING_ONLY
