@@ -125,15 +125,18 @@ def _max_take_per_request() -> int:
 
 
 def _where_topic_by_slug_status(status_token: str) -> str:
-    """posts / postsCount 共用的 where（依 slug + status）。"""
+    """posts / postsCount 共用的 where（依 slug + status）。
+
+    ``status`` 為 GraphQL enum（PostStatusType），須寫成 ``equals: published`` 不可加引號。
+    """
     return f"""
-      status: {{ equals: "{status_token}" }}
+      status: {{ equals: {status_token} }}
       topics: {{ some: {{ slug: {{ equals: $slug }} }} }}"""
 
 
 def _where_topic_polls_status(status_token: str) -> str:
     return f"""
-      status: {{ equals: "{status_token}" }}
+      status: {{ equals: {status_token} }}
       topics: {{ some: {{ slug: {{ equals: $slug }} }} }}
       NOT: [{{ poll: null }}]"""
 

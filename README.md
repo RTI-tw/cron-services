@@ -63,7 +63,7 @@ GET /export/contents-to-gcs?prefix=exports/contents/dev&slug=my-content-slug
 | `{slug}-pop.json` | `TopicPopular` | `orderBy: [{ commentCount: desc }, { createdAt: desc }]` |
 | `{slug}-polls.json` | `TopicPolls` | `where` 多 `NOT: [{ poll: null }]` |
 
-- **篩選**：`topics: { some: { slug: { equals: $slug } } }` + `status`（`post_state=active` 時為 `equals: "published"`）。
+- **篩選**：`topics: { some: { slug: { equals: $slug } } }` + `status`（`post_state=active` 時為 enum：`equals: published`，**不可**寫成字串 `"published"`）。
 - **變數**：`$slug`、`$take`；`take` = `per_topic_limit`（並受 `GQL_POST_MAX_TAKE` 上限，預設 100）。
 - **`posts` 內容**：與前端 `PostCardFields` + `PhotoFields` 相同選取，**不做後端欄位轉換**，前端可直接沿用型別。
 - **`postsCount`**：與前端相同之 `postsCount(where: …)`，供判斷是否還有更多筆。
