@@ -34,7 +34,7 @@ class ExportTopicPostsToGcsRequest(BaseModel):
         default=10,
         ge=1,
         le=50,
-        description="保留相容舊版 API；目前與前端三支查詢對齊後不再使用（take 僅用 per_topic_limit）",
+        description="熱門候選池倍率（只影響 -pop.json；候選數約為 per_topic_limit * scan_multiplier，並受 GQL_POST_MAX_TAKE 上限）",
     )
 
 

@@ -19,7 +19,8 @@ pip install -r requirements.txt
 - `KEYSTONE_GQL_ENDPOINT`：Keystone GraphQL URL（必填）
 - `KEYSTONE_AUTH_TOKEN`：選填，Bearer token
 - `GCP_PROJECT_ID`：選填，便於日後擴充
-- `GQL_POST_MAX_TAKE`：選填，預設 `100`。Keystone 對 `Post` 的 `graphql.maximumTake` 常有上限（例如 100）；`/export/topic-posts-to-gcs` 會依此 **分頁** 拉取 `per_topic_limit × scan_multiplier` 筆，避免單次 `take` 過大導致 GraphQL **HTTP 400**。
+- `GQL_POST_MAX_TAKE`：選填，預設 `100`。Keystone 對 `Post` 的 `graphql.maximumTake` 常有上限（例如 100）；匯出查詢的 `take` 會受此上限限制，避免 GraphQL **HTTP 400**。
+- `HOT_SCORE_THRESHOLD`：選填，預設 `5`。`-pop.json` 在「3天內」綜合分數達到此門檻才視為熱門。
 
 Cloud Run 執行身分需能寫入該 bucket（例如 `roles/storage.objectAdmin` 或最小必要權限）。
 
@@ -55,12 +56,11 @@ GET /export/contents-to-gcs?prefix=exports/contents/dev&slug=my-content-slug
 
 ### `GET /export/topic-posts-to-gcs`
 
-與**前端論壇 GQL**對齊：每個 **有 `slug` 的 topic** 寫入三支查詢結果（`prefix/` 下），每次執行 **覆寫**。
+與前端論壇 GQL 對齊：每個有 `slug` 的 topic 寫入 `latest` / `polls` 兩種檔案（`prefix/` 下），每次執行覆寫。
 
 | 檔名 | 對應前端 query | 差異 |
 |------|----------------|------|
 | `{slug}-latest.json` | `TopicLatest` | `orderBy: [{ createdAt: desc }]` |
-| `{slug}-pop.json` | `TopicPopular` | `orderBy: [{ commentCount: desc }, { createdAt: desc }]` |
 | `{slug}-polls.json` | `TopicPolls` | `where` 多 `NOT: [{ poll: null }]` |
 
 - **篩選**：`topics: { some: { slug: { equals: $slug } } }` + `status`（`post_state=active` 時為 enum：`equals: published`，**不可**寫成字串 `"published"`）。
@@ -79,7 +79,7 @@ GET /export/contents-to-gcs?prefix=exports/contents/dev&slug=my-content-slug
 }
 ```
 
-**無 `slug` 的 topic** 不會產檔（前端 query 亦依賴 slug）。`scan_multiplier` 僅保留 API 相容，**目前不使用**。
+**無 `slug` 的 topic** 不會產檔（前端 query 亦依賴 slug）。`scan_multiplier` 目前用於熱門候選池大小（`hot_scan_take = min(per_topic_limit * scan_multiplier, GQL_POST_MAX_TAKE)`）。
 
 Query 參數：
 
@@ -88,10 +88,29 @@ Query 參數：
 | `prefix` | 預設 `exports/topic-posts` |
 | `per_topic_limit` | 對應 GQL `take`（1–200），實際 `min(per_topic_limit, GQL_POST_MAX_TAKE)` |
 | `post_state` | 預設 `active` → where 使用 `published` |
-| `scan_multiplier` | 相容舊參數，目前忽略 |
+| `scan_multiplier` | 相容參數（此端點目前不使用） |
 
 ```
 GET /export/topic-posts-to-gcs?prefix=json/topics&per_topic_limit=100&post_state=active
+```
+
+### `GET /export/topic-pops-to-gcs`
+
+每個有 `slug` 的 topic 寫入 `{slug}-pop.json`，可用較低頻率排程。
+
+- 先放該 topic `isBoost=true` 的貼文
+- 再依熱門規則補齊：3天積分門檻（Reaction*2 + PollVote*3 + Comment*5）
+- 不足時 fallback：3天最高分（Top50）→ 14天最高分（Top50）→ 最新文章前10篇；若仍為空，JSON 會回傳 `emptyMessage: "尚無貼文"`
+
+| 參數 | 說明 |
+|------|------|
+| `prefix` | 預設 `exports/topic-posts` |
+| `per_topic_limit` | 查詢基礎 `take`（1–200）；`-pop.json` 最終輸出固定最多 50 篇 |
+| `post_state` | 預設 `active` → where 使用 `published` |
+| `scan_multiplier` | 熱門候選池倍率（影響 3天/14天候選範圍） |
+
+```
+GET /export/topic-pops-to-gcs?prefix=json/topics&per_topic_limit=100&post_state=active&scan_multiplier=10
 ```
 
 ### `GET /export/topics-daily-stats-to-gcs`

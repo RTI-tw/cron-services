@@ -6,7 +6,7 @@ from fastapi import Depends, FastAPI, HTTPException, Query
 
 from . import schemas
 from .export_contents import export_all_contents_to_gcs
-from .export_topic_posts import export_topic_posts_to_gcs
+from .export_topic_posts import export_topic_pops_to_gcs, export_topic_posts_to_gcs
 from .export_topics_daily_stats import export_topics_daily_stats_to_gcs
 
 logger = logging.getLogger(__name__)
@@ -139,7 +139,7 @@ async def export_topic_posts(
     body: Annotated[schemas.ExportTopicPostsToGcsRequest, Depends(_export_topic_posts_query)],
 ):
     """
-    依前端相同 GQL（TopicLatest / TopicPopular / TopicPolls）寫入每 topic 三支 JSON 並上傳 GCS。
+    依前端相同 GQL 輸出每 topic 的 latest / polls JSON 並上傳 GCS。
     """
     try:
         return await asyncio.to_thread(
@@ -156,6 +156,31 @@ async def export_topic_posts(
         raise HTTPException(status_code=503, detail=_runtime_error_http_detail(e)) from e
     except Exception as e:  # noqa: BLE001
         logger.exception("export/topic-posts-to-gcs failed: %s", e)
+        raise HTTPException(status_code=502, detail=str(e)) from e
+
+
+@app.get("/export/topic-pops-to-gcs")
+async def export_topic_pops(
+    body: Annotated[schemas.ExportTopicPostsToGcsRequest, Depends(_export_topic_posts_query)],
+):
+    """
+    依熱門規則（Boost 優先 + 積分 + fallback）輸出每 topic 的 pop JSON 並上傳 GCS。
+    """
+    try:
+        return await asyncio.to_thread(
+            export_topic_pops_to_gcs,
+            prefix=body.prefix,
+            per_topic_limit=body.per_topic_limit,
+            post_state=body.post_state,
+            scan_multiplier=body.scan_multiplier,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except RuntimeError as e:
+        logger.warning("export/topic-pops-to-gcs RuntimeError: %s", e)
+        raise HTTPException(status_code=503, detail=_runtime_error_http_detail(e)) from e
+    except Exception as e:  # noqa: BLE001
+        logger.exception("export/topic-pops-to-gcs failed: %s", e)
         raise HTTPException(status_code=502, detail=str(e)) from e
 
 
