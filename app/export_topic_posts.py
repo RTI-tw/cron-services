@@ -1,8 +1,9 @@
 import json
 import os
+import re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Set
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from google.cloud import storage
 
@@ -75,6 +76,27 @@ query TopicPostsPage($tid: ID!, $skip: Int!, $take: Int!) {{
     status
     createdAt
     updatedAt
+    author {{
+      id
+      name
+      nickname
+      username
+      photo {{
+        url
+        file {{ url }}
+      }}
+    }}
+    heroImage {{
+      id
+      url
+      file {{ url }}
+    }}
+    poll {{
+      id
+    }}
+    reactions(take: 5000) {{
+      emotion
+    }}
     comments {{ id }}
     topics {{ id slug name }}
   }}
@@ -144,12 +166,128 @@ def _collect_poll_post_ids(batch_size: int = 200) -> Set[str]:
     return ids
 
 
-def _shape_post(p: Dict[str, Any]) -> Dict[str, Any]:
-    topics_list = p.get("topics") or []
+def _html_to_plain_preview(html: Optional[str], max_len: int = 220) -> Optional[str]:
+    if html is None:
+        return None
+    s = str(html)
+    if not s.strip():
+        return None
+    s = re.sub(r"(?is)<script[^>]*>.*?</script>", " ", s)
+    s = re.sub(r"(?is)<style[^>]*>.*?</style>", " ", s)
+    s = re.sub(r"<[^>]+>", " ", s)
+    s = re.sub(r"\s+", " ", s).strip()
+    if len(s) <= max_len:
+        return s
+    return s[: max_len - 1].rstrip() + "…"
+
+
+def _truncate_text(s: str, max_len: int) -> str:
+    if len(s) <= max_len:
+        return s
+    return s[: max_len - 1].rstrip() + "…"
+
+
+def _media_url(node: Any) -> Optional[str]:
+    if not isinstance(node, dict):
+        return None
+    for key in ("url", "publicUrl", "publicUrlTransformed"):
+        v = node.get(key)
+        if isinstance(v, str) and v.strip():
+            return v.strip()
+    f = node.get("file")
+    if isinstance(f, dict):
+        v = f.get("url")
+        if isinstance(v, str) and v.strip():
+            return v.strip()
+    return None
+
+
+def _author_user_icon_url(author: Dict[str, Any]) -> Optional[str]:
+    """依序嘗試 Member 上常見的圖片欄位（目前 GQL 僅查 photo，其餘供擴充後自動帶出）。"""
+    for fld in ("photo", "avatar", "icon", "image"):
+        u = _media_url(author.get(fld))
+        if u:
+            return u
+    return None
+
+
+def _reaction_top_and_total(reactions: Any) -> Tuple[List[Dict[str, Any]], int]:
+    rows = reactions if isinstance(reactions, list) else []
+    counts: Dict[str, int] = {}
+    for r in rows:
+        if not isinstance(r, dict):
+            continue
+        em = str(r.get("emotion") or "").strip()
+        if em:
+            counts[em] = counts.get(em, 0) + 1
+    total = sum(counts.values())
+    top_pairs = sorted(counts.items(), key=lambda x: (-x[1], x[0]))[:3]
+    top_reactions = [{"emotion": e, "count": c} for e, c in top_pairs]
+    return top_reactions, total
+
+
+def _shape_post(p: Dict[str, Any], poll_post_ids: Set[str]) -> Dict[str, Any]:
+    topics_list = [t for t in (p.get("topics") or []) if isinstance(t, dict)]
     first_topic = topics_list[0] if topics_list else None
+    author = p.get("author") if isinstance(p.get("author"), dict) else {}
+
+    content_preview = _html_to_plain_preview(p.get("content"))
+    title_str = str(p.get("title") or "").strip() or None
+    post_preview_parts: List[str] = []
+    if title_str:
+        post_preview_parts.append(title_str)
+    if content_preview:
+        post_preview_parts.append(content_preview)
+    post_preview = (
+        _truncate_text(" — ".join(post_preview_parts), 320)
+        if post_preview_parts
+        else None
+    )
+
+    pid = str(p.get("id") or "").strip()
+    poll_obj = p.get("poll") if isinstance(p.get("poll"), dict) else None
+    has_poll_rel = bool(poll_obj and poll_obj.get("id"))
+    is_poll_post = has_poll_rel or (pid in poll_post_ids if pid else False)
+
+    top_reactions, reaction_count = _reaction_top_and_total(p.get("reactions"))
+
+    hero = p.get("heroImage") if isinstance(p.get("heroImage"), dict) else {}
+    image_thumbnail_url = _media_url(hero)
+
+    comments = p.get("comments") or []
+    comment_count = len(comments) if isinstance(comments, list) else 0
+
+    topic_tags = [
+        {"id": t.get("id"), "slug": t.get("slug"), "name": t.get("name")}
+        for t in topics_list
+    ]
+
+    nickname = None
+    username = None
+    member_id = None
+    user_icon_url = None
+    if author:
+        member_id = author.get("id")
+        nickname = author.get("nickname") or author.get("name")
+        username = author.get("username")
+        user_icon_url = _author_user_icon_url(author)
+
     return {
-        "id": p.get("id"),
+        "userIconUrl": user_icon_url,
+        "nickname": nickname,
+        "username": username,
+        "memberId": member_id,
+        "topicTags": topic_tags,
+        "postPreview": post_preview,
         "title": p.get("title"),
+        "isPollPost": is_poll_post,
+        "contentPreview": content_preview,
+        "imageThumbnailUrl": image_thumbnail_url,
+        "videoThumbnailUrl": None,
+        "topReactions": top_reactions,
+        "reactionCount": reaction_count,
+        "commentCount": comment_count,
+        "id": p.get("id"),
         "content": p.get("content"),
         "language": p.get("language"),
         "content_zh": p.get("content_zh"),
@@ -161,9 +299,10 @@ def _shape_post(p: Dict[str, Any]) -> Dict[str, Any]:
         "status": p.get("status"),
         "createdAt": p.get("createdAt"),
         "updatedAt": p.get("updatedAt"),
-        "commentsCount": len((p.get("comments") or [])),
+        "commentsCount": comment_count,
         "topic": first_topic,
         "topics": topics_list,
+        "author": author if author else None,
     }
 
 
@@ -243,17 +382,15 @@ def export_topic_posts_to_gcs(
     for t in topics:
         tid = str(t.get("id") or "").strip()
         posts = topic_id_to_posts.get(tid, []) if tid else []
-        shaped = [_shape_post(p) for p in posts]
+        shaped = [_shape_post(p, poll_post_ids) for p in posts]
 
         latest = shaped[:per_topic_limit]
         hot = sorted(
             shaped,
-            key=lambda x: x.get("commentsCount") or 0,
+            key=lambda x: x.get("commentCount") or 0,
             reverse=True,
         )[:per_topic_limit]
-        with_poll = [
-            p for p in shaped if str(p.get("id") or "") in poll_post_ids
-        ][:per_topic_limit]
+        with_poll = [p for p in shaped if p.get("isPollPost")][:per_topic_limit]
 
         topic_meta = {
             "id": t.get("id"),
