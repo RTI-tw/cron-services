@@ -55,50 +55,43 @@ GET /export/contents-to-gcs?prefix=exports/contents/dev&slug=my-content-slug
 
 ### `GET /export/topic-posts-to-gcs`
 
-**每個 topic 各產出三個檔案**（共 `topics 數量 × 3`），寫在 **`prefix/`** 下，檔名以 **Topic.slug** 為前綴（無 slug 時為 `topic-{id 前綴}`），每次執行 **覆寫**：
+與**前端論壇 GQL**對齊：每個 **有 `slug` 的 topic** 寫入三支查詢結果（`prefix/` 下），每次執行 **覆寫**。
 
-| 檔名 | 內容 |
-|------|------|
-| `{slug}-latest.json` | 該 topic 依建立時間新到舊，最多 N 則 post（含內文等欄位） |
-| `{slug}-pop.json` | 該 topic 依留言數熱門，最多 N 則 |
-| `{slug}-polls.json` | 該 topic 內與投票關聯的文章，最多 N 則 |
+| 檔名 | 對應前端 query | 差異 |
+|------|----------------|------|
+| `{slug}-latest.json` | `TopicLatest` | `orderBy: [{ createdAt: desc }]` |
+| `{slug}-pop.json` | `TopicPopular` | `orderBy: [{ commentCount: desc }, { createdAt: desc }]` |
+| `{slug}-polls.json` | `TopicPolls` | `where` 多 `NOT: [{ poll: null }]` |
 
-每個 JSON 結構為：`generatedAt`、`perTopicLimit`、`postState`、`topic`（id/name/slug/sortOrder）、`posts`（陣列）。
+- **篩選**：`topics: { some: { slug: { equals: $slug } } }` + `status`（`post_state=active` 時為 `equals: "published"`）。
+- **變數**：`$slug`、`$take`；`take` = `per_topic_limit`（並受 `GQL_POST_MAX_TAKE` 上限，預設 100）。
+- **`posts` 內容**：與前端 `PostCardFields` + `PhotoFields` 相同選取，**不做後端欄位轉換**，前端可直接沿用型別。
+- **`postsCount`**：與前端相同之 `postsCount(where: …)`，供判斷是否還有更多筆。
 
-`posts[]` 每一筆包含（供列表／卡片用）：
+每個 JSON 結構統一為：
 
-| 欄位 | 說明 |
-|------|------|
-| `userIconUrl` | 作者頭貼 URL（需在 GQL 的 `author { ... }` 選出 CMS 實際的圖片欄位，如 `photo`／`icon`；目前預設查詢未含圖片則為 `null`） |
-| `nickname` | 暱稱（`author.nickname`，無則退回 `author.name`） |
-| `username` | 用戶名稱（CMS 無 `username` 時退回 `author.name`） |
-| `memberId` | 作者 Member `id` |
-| `topicTags` | 貼文所屬 topics：`[{ id, slug, name }, …]` |
-| `postPreview` | 標題 + 內文純文字摘要（約 320 字內） |
-| `title` | 貼文標題 |
-| `isPollPost` | 是否為投票貼文（`poll` 關聯或 polls 列表對應） |
-| `contentPreview` | 內文純文字預覽（約 220 字內，已粗略去 HTML） |
-| `imageThumbnailUrl` | 代表圖（`heroImages` 第一張的 `file.url`；CMS `Photo` 無頂層 `url`；相容舊鍵 `heroImage`） |
-| `videoThumbnailUrl` | 目前為 `null`；若 CMS 有影片縮圖欄位，需在查詢與 `_shape_post` 補上 |
-| `topReactions` | 前三名心情：`[{ "emotion": "<鍵值>", "count": 12 }, …]`；需在 GQL 的 `reactions { ... }` 選出實際心情欄位（程式會辨識 `emotion`／`type`／`kind` 等常見鍵名） |
-| `reactionCount` | 心情總則數（有心情欄位時為各類加總；僅有 `id` 時為 `reactions` 筆數） |
-| `commentCount` | 留言數（與 `commentsCount` 相同，後者為相容舊鍵名） |
+```json
+{
+  "generatedAt": "...",
+  "topic": { "id": "...", "name": "...", "slug": "..." },
+  "postsCount": 42,
+  "posts": [ ... ]
+}
+```
 
-另保留 `content`、多語欄位、`author` 原始物件等供進階使用。目前查詢對齊 RTI forum：`author` 僅 `id`／`name`／`nickname`；`heroImages`；`reactions` 僅 `id`（避免 schema 無 `emotion` 時驗證失敗）。若要在 JSON 顯示頭貼或心情統計，請在 `app/export_topic_posts.py` 的查詢區塊補上 CMS 實際欄位名，並視需要擴充 `_reaction_emotion_key_from_row` 或 `_author_user_icon_url` 的鍵名列表。
+**無 `slug` 的 topic** 不會產檔（前端 query 亦依賴 slug）。`scan_multiplier` 僅保留 API 相容，**目前不使用**。
 
 Query 參數：
 
 | 參數 | 說明 |
 |------|------|
 | `prefix` | 預設 `exports/topic-posts` |
-| `per_topic_limit` | 每個 topic 每種列表取幾則，預設 `10`（1–200） |
-| `post_state` | 預設 `active`（會映射為 Keystone `published`） |
-| `scan_multiplier` | 預設 `10`（1–50），先掃 `per_topic_limit ×` 此值再排序篩選（熱門／投票） |
-
-範例（slug 為 `current-events` 時會得到 `current-events-latest.json` 等）：
+| `per_topic_limit` | 對應 GQL `take`（1–200），實際 `min(per_topic_limit, GQL_POST_MAX_TAKE)` |
+| `post_state` | 預設 `active` → where 使用 `published` |
+| `scan_multiplier` | 相容舊參數，目前忽略 |
 
 ```
-GET /export/topic-posts-to-gcs?prefix=json/topics&per_topic_limit=10&post_state=active&scan_multiplier=10
+GET /export/topic-posts-to-gcs?prefix=json/topics&per_topic_limit=100&post_state=active
 ```
 
 ### `GET /export/topics-daily-stats-to-gcs`

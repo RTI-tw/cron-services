@@ -20,16 +20,21 @@ class ExportTopicPostsToGcsRequest(BaseModel):
         default="exports/topic-posts",
         description="GCS 目錄前綴（不含時間戳）；每個 topic 寫入 {slug}-latest/pop/polls.json，每次覆寫",
     )
-    per_topic_limit: int = Field(default=10, ge=1, le=200, description="每個 topic 取幾筆")
+    per_topic_limit: int = Field(
+        default=10,
+        ge=1,
+        le=200,
+        description="對應前端 GQL 變數 take（每 topic 每支查詢取幾則），並受環境變數 GQL_POST_MAX_TAKE 上限",
+    )
     post_state: str = Field(
         default="active",
-        description="文章狀態；active 會映射為 Keystone status=published",
+        description="文章狀態；active 會映射為 where status equals published",
     )
     scan_multiplier: int = Field(
         default=10,
         ge=1,
         le=50,
-        description="為了計算熱門/含投票，先抓 per_topic_limit * scan_multiplier 筆再排序過濾",
+        description="保留相容舊版 API；目前與前端三支查詢對齊後不再使用（take 僅用 per_topic_limit）",
     )
 
 
