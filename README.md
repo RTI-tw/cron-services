@@ -55,21 +55,29 @@ GET /export/contents-to-gcs?prefix=exports/contents/dev&slug=my-content-slug
 
 ### `GET /export/topic-posts-to-gcs`
 
-產出 `latest.json`、`hot.json`、`with-poll.json` 三檔，寫在 **`prefix` 目錄下固定檔名**，每次執行 **覆寫**。
+**每個 topic 各產出三個檔案**（共 `topics 數量 × 3`），寫在 **`prefix/`** 下，檔名以 **Topic.slug** 為前綴（無 slug 時為 `topic-{id 前綴}`），每次執行 **覆寫**：
+
+| 檔名 | 內容 |
+|------|------|
+| `{slug}-latest.json` | 該 topic 依建立時間新到舊，最多 N 則 post（含內文等欄位） |
+| `{slug}-pop.json` | 該 topic 依留言數熱門，最多 N 則 |
+| `{slug}-polls.json` | 該 topic 內與投票關聯的文章，最多 N 則 |
+
+每個 JSON 結構為：`generatedAt`、`perTopicLimit`、`postState`、`topic`（id/name/slug/sortOrder）、`posts`（陣列）。
 
 Query 參數：
 
 | 參數 | 說明 |
 |------|------|
 | `prefix` | 預設 `exports/topic-posts` |
-| `per_topic_limit` | 每個 topic 取幾筆，預設 `10`（1–200） |
+| `per_topic_limit` | 每個 topic 每種列表取幾則，預設 `10`（1–200） |
 | `post_state` | 預設 `active`（會映射為 Keystone `published`） |
-| `scan_multiplier` | 預設 `10`（1–50），用於熱門／含投票排序前的掃描倍數 |
+| `scan_multiplier` | 預設 `10`（1–50），先掃 `per_topic_limit ×` 此值再排序篩選（熱門／投票） |
 
-範例：
+範例（slug 為 `current-events` 時會得到 `current-events-latest.json` 等）：
 
 ```
-GET /export/topic-posts-to-gcs?prefix=exports/topic-posts/dev&per_topic_limit=10&post_state=active&scan_multiplier=10
+GET /export/topic-posts-to-gcs?prefix=json/topics&per_topic_limit=10&post_state=active&scan_multiplier=10
 ```
 
 ### `GET /export/topics-daily-stats-to-gcs`

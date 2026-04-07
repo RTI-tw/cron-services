@@ -18,7 +18,7 @@ class ExportContentsToGcsRequest(BaseModel):
 class ExportTopicPostsToGcsRequest(BaseModel):
     prefix: str = Field(
         default="exports/topic-posts",
-        description="GCS 目錄前綴（不含時間戳）；latest/hot/with-poll 固定檔名，每次覆寫",
+        description="GCS 目錄前綴（不含時間戳）；每個 topic 寫入 {slug}-latest/pop/polls.json，每次覆寫",
     )
     per_topic_limit: int = Field(default=10, ge=1, le=200, description="每個 topic 取幾筆")
     post_state: str = Field(

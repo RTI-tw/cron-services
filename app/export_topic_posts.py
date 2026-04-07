@@ -14,6 +14,17 @@ def _normalize_prefix(prefix: str) -> str:
     return (prefix or "").strip().strip("/")
 
 
+def _topic_slug_for_path(topic: Dict[str, Any]) -> str:
+    """GCS 檔名前綴：優先 topic.slug，空則 topic-{id 前綴}；避免路徑字元。"""
+    slug = str(topic.get("slug") or "").strip()
+    tid = str(topic.get("id") or "").strip()
+    if slug:
+        return slug.replace("/", "_").replace("\\", "_")
+    if tid:
+        return f"topic-{tid[:16]}"
+    return "topic-unknown"
+
+
 def _resolve_post_status(status: str) -> str:
     """
     使用者語意的 active 對應到 Keystone Post.status 的 published。
@@ -172,10 +183,12 @@ def export_topic_posts_to_gcs(
     scan_multiplier: int = 10,
 ) -> Dict[str, Any]:
     """
-    產出三份檔案（寫入 ``{prefix}/`` 下固定檔名，每次執行覆寫）：
-    1) latest.json: 每個 topic 的最新 post（依 createdAt desc）
-    2) hot.json: 每個 topic 的熱門 post（留言數最多）
-    3) with-poll.json: 每個 topic 中有投票內容的 post（依 createdAt desc）
+    每個 topic 各寫入三個 JSON（``{prefix}/{slug}-latest.json``、``-pop.json``、``-polls.json``），
+    每次執行覆寫。slug 取自 Topic.slug，無 slug 時以 ``topic-{id}`` 前綴。
+
+    - latest：依建立時間新到舊取 N 則
+    - pop：依留言數熱門取 N 則
+    - polls：該 topic 內含投票（與 polls 關聯）的文章，依掃描順序取 N 則
     """
     settings = get_settings()
     bucket_name = settings.gcs_bucket
@@ -215,30 +228,6 @@ def export_topic_posts_to_gcs(
                 if tid:
                     topic_id_to_posts[tid] = posts
 
-    latest_by_topic: List[Dict[str, Any]] = []
-    hot_by_topic: List[Dict[str, Any]] = []
-    with_poll_by_topic: List[Dict[str, Any]] = []
-
-    for t in topics:
-        tid = str(t.get("id") or "").strip()
-        posts = topic_id_to_posts.get(tid, []) if tid else []
-        shaped = [_shape_post(p) for p in posts]
-
-        latest = shaped[:per_topic_limit]
-        hot = sorted(shaped, key=lambda x: x.get("commentsCount") or 0, reverse=True)[:per_topic_limit]
-        with_poll = [p for p in shaped if str(p.get("id") or "") in poll_post_ids][:per_topic_limit]
-
-        topic_meta = {
-            "id": t.get("id"),
-            "name": t.get("name"),
-            "slug": t.get("slug"),
-            "sortOrder": t.get("sortOrder"),
-        }
-
-        latest_by_topic.append({"topic": topic_meta, "posts": latest})
-        hot_by_topic.append({"topic": topic_meta, "posts": hot})
-        with_poll_by_topic.append({"topic": topic_meta, "posts": with_poll})
-
     base_dir = _normalize_prefix(prefix)
 
     storage_client = storage.Client()
@@ -247,35 +236,62 @@ def export_topic_posts_to_gcs(
     def _under_base(name: str) -> str:
         return f"{base_dir}/{name}" if base_dir else name
 
-    latest_path = _under_base("latest.json")
-    hot_path = _under_base("hot.json")
-    with_poll_path = _under_base("with-poll.json")
+    generated_at = datetime.now(timezone.utc).isoformat()
+    uploaded_paths: List[str] = []
+    used_file_stems: Set[str] = set()
 
-    common_meta = {
-        "generatedAt": datetime.now(timezone.utc).isoformat(),
-        "perTopicLimit": per_topic_limit,
-        "postState": status_token,
-    }
-    _upload_json(
-        bucket,
-        latest_path,
-        {**common_meta, "topicsCount": len(latest_by_topic), "data": latest_by_topic},
-    )
-    _upload_json(
-        bucket,
-        hot_path,
-        {**common_meta, "topicsCount": len(hot_by_topic), "data": hot_by_topic},
-    )
-    _upload_json(
-        bucket,
-        with_poll_path,
-        {**common_meta, "topicsCount": len(with_poll_by_topic), "data": with_poll_by_topic},
-    )
+    for t in topics:
+        tid = str(t.get("id") or "").strip()
+        posts = topic_id_to_posts.get(tid, []) if tid else []
+        shaped = [_shape_post(p) for p in posts]
+
+        latest = shaped[:per_topic_limit]
+        hot = sorted(
+            shaped,
+            key=lambda x: x.get("commentsCount") or 0,
+            reverse=True,
+        )[:per_topic_limit]
+        with_poll = [
+            p for p in shaped if str(p.get("id") or "") in poll_post_ids
+        ][:per_topic_limit]
+
+        topic_meta = {
+            "id": t.get("id"),
+            "name": t.get("name"),
+            "slug": t.get("slug"),
+            "sortOrder": t.get("sortOrder"),
+        }
+
+        stem = _topic_slug_for_path(t)
+        if stem in used_file_stems and tid:
+            stem = f"{stem}-{tid[:8]}"
+        used_file_stems.add(stem)
+        common_payload = {
+            "generatedAt": generated_at,
+            "perTopicLimit": per_topic_limit,
+            "postState": status_token,
+            "topic": topic_meta,
+        }
+
+        triples = (
+            ("latest", latest),
+            ("pop", hot),
+            ("polls", with_poll),
+        )
+        for suffix, post_list in triples:
+            object_name = f"{stem}-{suffix}.json"
+            object_path = _under_base(object_name)
+            _upload_json(
+                bucket,
+                object_path,
+                {**common_payload, "posts": post_list},
+            )
+            uploaded_paths.append(object_path)
 
     return {
         "bucket": bucket_name,
         "prefix": base_dir,
-        "files": [latest_path, hot_path, with_poll_path],
+        "files": uploaded_paths,
         "topics_count": len(topics),
         "per_topic_limit": per_topic_limit,
         "post_state": status_token,

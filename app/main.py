@@ -139,7 +139,7 @@ async def export_topic_posts(
     body: Annotated[schemas.ExportTopicPostsToGcsRequest, Depends(_export_topic_posts_query)],
 ):
     """
-    產出每個 topic 的最新/熱門/含投票貼文三份 JSON，並上傳到 GCS。
+    依每個 topic 的 slug 產出三份 JSON（latest / pop / polls）並上傳到 GCS。
     """
     try:
         return await asyncio.to_thread(
