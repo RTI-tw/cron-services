@@ -4,7 +4,10 @@ from pydantic import BaseModel, Field
 
 
 class ExportContentsToGcsRequest(BaseModel):
-    prefix: str = Field(default="exports/contents", description="GCS 物件路徑前綴")
+    prefix: str = Field(
+        default="exports/contents",
+        description="GCS 目錄前綴（不含時間戳）；每次匯出覆寫該前綴下同名檔案",
+    )
     page_size: int = Field(default=200, ge=1, le=1000, description="每次 GQL 擷取筆數")
     id: Optional[str] = Field(
         default=None,
@@ -13,7 +16,10 @@ class ExportContentsToGcsRequest(BaseModel):
 
 
 class ExportTopicPostsToGcsRequest(BaseModel):
-    prefix: str = Field(default="exports/topic-posts", description="GCS 物件路徑前綴")
+    prefix: str = Field(
+        default="exports/topic-posts",
+        description="GCS 目錄前綴（不含時間戳）；latest/hot/with-poll 固定檔名，每次覆寫",
+    )
     per_topic_limit: int = Field(default=10, ge=1, le=200, description="每個 topic 取幾筆")
     post_state: str = Field(
         default="active",
@@ -30,7 +36,7 @@ class ExportTopicPostsToGcsRequest(BaseModel):
 class ExportTopicsDailyStatsToGcsRequest(BaseModel):
     prefix: str = Field(
         default="exports/topic-daily-stats",
-        description="GCS 物件路徑前綴",
+        description="GCS 目錄前綴（不含時間戳）；topics-daily.json 每次覆寫",
     )
     timezone: str = Field(
         default="Asia/Taipei",

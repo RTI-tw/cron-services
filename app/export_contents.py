@@ -1,5 +1,4 @@
 import json
-from datetime import datetime, timezone
 from typing import Any, Dict, List
 
 from google.cloud import storage
@@ -57,6 +56,7 @@ def export_all_contents_to_gcs(
 ) -> Dict[str, Any]:
     """
     透過 Keystone GraphQL 取得全部 contents，逐筆上傳為獨立 JSON 檔案到 GCS。
+    物件路徑為 ``{prefix}/{identifier 或 id}-{id}.json``，每次執行覆寫同一路徑。
     """
     settings = get_settings()
     bucket_name = settings.gcs_bucket
@@ -68,9 +68,7 @@ def export_all_contents_to_gcs(
     storage_client = storage.Client()
     bucket = storage_client.bucket(bucket_name)
 
-    safe_prefix = _normalize_prefix(prefix)
-    export_ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    base_dir = f"{safe_prefix}/{export_ts}" if safe_prefix else export_ts
+    base_dir = _normalize_prefix(prefix)
 
     uploaded_paths: List[str] = []
     total = 0
@@ -86,7 +84,8 @@ def export_all_contents_to_gcs(
         file_stem = identifier if identifier else item_id
         # 避免路徑分隔符影響物件路徑
         file_stem = file_stem.replace("/", "_")
-        object_path = f"{base_dir}/{file_stem}-{item_id}.json"
+        stem = f"{file_stem}-{item_id}.json"
+        object_path = f"{base_dir}/{stem}" if base_dir else stem
 
         payload = json.dumps(row, ensure_ascii=False, indent=2)
         blob = bucket.blob(object_path)

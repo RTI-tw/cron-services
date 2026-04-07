@@ -43,6 +43,8 @@ Query 參數（皆有預設值，可省略）：
 | `page_size` | 每次 GraphQL 擷取筆數，預設 `200`（1–1000） |
 | `id` | 選填；若提供則只匯出該筆 content，未提供則分頁匯出全部 |
 
+每次執行都寫入 **同一個 `prefix` 路徑**，檔名為 `{identifier 或 id}-{id}.json`，會 **覆寫** 既有同名物件；若 Keystone 已刪除某筆 content，GCS 裡舊檔不會自動刪除。
+
 範例：
 
 ```
@@ -52,7 +54,7 @@ GET /export/contents-to-gcs?prefix=exports/contents/dev&id=clxxxxxxxxxxxxxxxxxxx
 
 ### `GET /export/topic-posts-to-gcs`
 
-產出 `latest.json`、`hot.json`、`with-poll.json` 三檔。
+產出 `latest.json`、`hot.json`、`with-poll.json` 三檔，寫在 **`prefix` 目錄下固定檔名**，每次執行 **覆寫**。
 
 Query 參數：
 
@@ -71,7 +73,7 @@ GET /export/topic-posts-to-gcs?prefix=exports/topic-posts/dev&per_topic_limit=10
 
 ### `GET /export/topics-daily-stats-to-gcs`
 
-各 topic 在指定時區「當日」新文章數，合併為 `topics-daily.json`。
+各 topic 在指定時區「當日」新文章數，合併為 **`prefix` 下的 `topics-daily.json`**（無時間戳子目錄；每次執行 **覆寫**）。
 
 Query 參數：
 

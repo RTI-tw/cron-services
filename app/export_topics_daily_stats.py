@@ -69,7 +69,7 @@ def export_topics_daily_stats_to_gcs(
     post_state: str = "active",
 ) -> Dict[str, Any]:
     """
-    產出單一檔案 topics-daily.json：每個 topic 含當日新文章數（依 Post.createdAt 與 status）。
+    產出單一檔案 ``{prefix}/topics-daily.json``（無時間戳子目錄；每次執行覆寫）。
     """
     settings = get_settings()
     bucket_name = settings.gcs_bucket
@@ -117,10 +117,10 @@ def export_topics_daily_stats_to_gcs(
         }
         topics_out.append(topic_row)
 
-    export_ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    safe_prefix = _normalize_prefix(prefix)
-    base_dir = f"{safe_prefix}/{export_ts}" if safe_prefix else export_ts
-    object_path = f"{base_dir}/topics-daily.json"
+    base_dir = _normalize_prefix(prefix)
+    object_path = (
+        f"{base_dir}/topics-daily.json" if base_dir else "topics-daily.json"
+    )
 
     payload: Dict[str, Any] = {
         "generatedAt": datetime.now(timezone.utc).isoformat(),

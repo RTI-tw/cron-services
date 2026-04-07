@@ -121,7 +121,7 @@ def export_topic_posts_to_gcs(
     scan_multiplier: int = 10,
 ) -> Dict[str, Any]:
     """
-    產出三份檔案：
+    產出三份檔案（寫入 ``{prefix}/`` 下固定檔名，每次執行覆寫）：
     1) latest.json: 每個 topic 的最新 post（依 createdAt desc）
     2) hot.json: 每個 topic 的熱門 post（留言數最多）
     3) with-poll.json: 每個 topic 中有投票內容的 post（依 createdAt desc）
@@ -166,16 +166,17 @@ def export_topic_posts_to_gcs(
         hot_by_topic.append({"topic": topic_meta, "posts": hot})
         with_poll_by_topic.append({"topic": topic_meta, "posts": with_poll})
 
-    export_ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    safe_prefix = _normalize_prefix(prefix)
-    base_dir = f"{safe_prefix}/{export_ts}" if safe_prefix else export_ts
+    base_dir = _normalize_prefix(prefix)
 
     storage_client = storage.Client()
     bucket = storage_client.bucket(bucket_name)
 
-    latest_path = f"{base_dir}/latest.json"
-    hot_path = f"{base_dir}/hot.json"
-    with_poll_path = f"{base_dir}/with-poll.json"
+    def _under_base(name: str) -> str:
+        return f"{base_dir}/{name}" if base_dir else name
+
+    latest_path = _under_base("latest.json")
+    hot_path = _under_base("hot.json")
+    with_poll_path = _under_base("with-poll.json")
 
     common_meta = {
         "generatedAt": datetime.now(timezone.utc).isoformat(),
