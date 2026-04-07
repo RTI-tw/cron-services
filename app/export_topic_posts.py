@@ -1,11 +1,13 @@
 import json
+import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Set
 
 from google.cloud import storage
 
 from .config import get_settings
-from .keystone_gql import execute_gql
+from .keystone_gql import execute_gql, get_thread_local_gql_client
 
 
 def _normalize_prefix(prefix: str) -> str:
@@ -24,38 +26,84 @@ def _resolve_post_status(status: str) -> str:
     raise ValueError(f"不支援的 post 狀態: {status}")
 
 
-def _build_topics_posts_query(status_enum_token: str, scan_limit: int) -> str:
-    return f"""
-query ListTopicsWithPosts {{
-  topics(orderBy: {{ sortOrder: asc }}) {{
+QUERY_TOPICS_META = """
+query ListTopicsMeta {
+  topics(orderBy: { sortOrder: asc }) {
     id
     name
     slug
     sortOrder
-    posts(
-      where: {{ status: {{ equals: {status_enum_token} }} }}
-      orderBy: {{ createdAt: desc }}
-      take: {scan_limit}
-    ) {{
-      id
-      title
-      content
-      language
-      content_zh
-      content_en
-      content_vi
-      content_th
-      content_id
-      spamScore
-      status
-      createdAt
-      updatedAt
-      comments {{ id }}
-      topic {{ id slug name }}
+  }
+}
+"""
+
+
+def _build_posts_page_query(status_enum_token: str) -> str:
+    """單一 topic 分頁取 posts；每頁 take 不超過 Keystone graphql.maximumTake（常見 100）。"""
+    return f"""
+query TopicPostsPage($tid: ID!, $skip: Int!, $take: Int!) {{
+  posts(
+    where: {{
+      topic: {{ id: {{ equals: $tid }} }}
+      status: {{ equals: {status_enum_token} }}
     }}
+    orderBy: {{ createdAt: desc }}
+    skip: $skip
+    take: $take
+  ) {{
+    id
+    title
+    content
+    language
+    content_zh
+    content_en
+    content_vi
+    content_th
+    content_id
+    spamScore
+    status
+    createdAt
+    updatedAt
+    comments {{ id }}
+    topic {{ id slug name }}
   }}
 }}
 """
+
+
+def _max_take_per_request() -> int:
+    raw = (os.getenv("GQL_POST_MAX_TAKE") or "100").strip()
+    try:
+        return max(1, min(int(raw), 1000))
+    except ValueError:
+        return 100
+
+
+def _paginate_posts_for_topic(
+    topic_id: str,
+    scan_limit: int,
+    status_token: str,
+    posts_page_query: str,
+    max_take: int,
+) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    skip = 0
+    client = get_thread_local_gql_client()
+    while len(out) < scan_limit:
+        take = min(max_take, scan_limit - len(out))
+        data = execute_gql(
+            posts_page_query,
+            {"tid": topic_id, "skip": skip, "take": take},
+            client=client,
+        )
+        rows = data.get("posts") or []
+        if not rows:
+            break
+        out.extend(rows)
+        skip += len(rows)
+        if len(rows) < take:
+            break
+    return out[:scan_limit]
 
 
 QUERY_POLLS_POST_IDS = """
@@ -137,18 +185,40 @@ def export_topic_posts_to_gcs(
 
     status_token = _resolve_post_status(post_state)
     scan_limit = per_topic_limit * scan_multiplier
+    max_take = _max_take_per_request()
+    posts_page_query = _build_posts_page_query(status_token)
 
-    query = _build_topics_posts_query(status_token, scan_limit)
-    data = execute_gql(query, None)
+    data = execute_gql(QUERY_TOPICS_META, None)
     topics = data.get("topics") or []
     poll_post_ids = _collect_poll_post_ids()
+
+    topic_id_to_posts: Dict[str, List[Dict[str, Any]]] = {}
+    if topics:
+        max_workers = min(16, max(1, len(topics)))
+
+        def _job(t: Dict[str, Any]) -> tuple[str, List[Dict[str, Any]]]:
+            tid = str(t.get("id") or "").strip()
+            if not tid:
+                return "", []
+            posts = _paginate_posts_for_topic(
+                tid, scan_limit, status_token, posts_page_query, max_take
+            )
+            return tid, posts
+
+        with ThreadPoolExecutor(max_workers=max_workers) as pool:
+            futures = [pool.submit(_job, t) for t in topics]
+            for fut in as_completed(futures):
+                tid, posts = fut.result()
+                if tid:
+                    topic_id_to_posts[tid] = posts
 
     latest_by_topic: List[Dict[str, Any]] = []
     hot_by_topic: List[Dict[str, Any]] = []
     with_poll_by_topic: List[Dict[str, Any]] = []
 
     for t in topics:
-        posts = t.get("posts") or []
+        tid = str(t.get("id") or "").strip()
+        posts = topic_id_to_posts.get(tid, []) if tid else []
         shaped = [_shape_post(p) for p in posts]
 
         latest = shaped[:per_topic_limit]

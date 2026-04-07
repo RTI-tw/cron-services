@@ -1,9 +1,20 @@
+import json
 import os
+import threading
 from typing import Any, Dict, Optional
 
 import httpx
 
 _client: Optional[httpx.Client] = None
+_thread_local = threading.local()
+
+
+def _client_headers() -> Dict[str, str]:
+    headers = {"Content-Type": "application/json"}
+    token = (os.getenv("KEYSTONE_AUTH_TOKEN") or "").strip()
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    return headers
 
 
 def _get_client() -> httpx.Client:
@@ -13,19 +24,52 @@ def _get_client() -> httpx.Client:
         raise RuntimeError("KEYSTONE_GQL_ENDPOINT 環境變數未設定")
 
     if _client is None:
-        headers = {"Content-Type": "application/json"}
-        token = (os.getenv("KEYSTONE_AUTH_TOKEN") or "").strip()
-        if token:
-            headers["Authorization"] = f"Bearer {token}"
-        _client = httpx.Client(base_url=endpoint, headers=headers, timeout=60.0)
+        _client = httpx.Client(
+            base_url=endpoint,
+            headers=_client_headers(),
+            timeout=httpx.Timeout(120.0, connect=30.0),
+        )
     return _client
 
 
-def execute_gql(query: str, variables: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-    client = _get_client()
-    resp = client.post("", json={"query": query, "variables": variables or {}})
-    resp.raise_for_status()
-    payload = resp.json()
+def get_thread_local_gql_client() -> httpx.Client:
+    """
+    供 ThreadPoolExecutor 等情境使用：每個執行緒各自一個 Client，避免共用 httpx 連線的競態。
+    """
+    endpoint = (os.getenv("KEYSTONE_GQL_ENDPOINT") or "").strip()
+    if not endpoint:
+        raise RuntimeError("KEYSTONE_GQL_ENDPOINT 環境變數未設定")
+    c = getattr(_thread_local, "client", None)
+    if c is None:
+        c = httpx.Client(
+            base_url=endpoint,
+            headers=_client_headers(),
+            timeout=httpx.Timeout(120.0, connect=30.0),
+        )
+        _thread_local.client = c
+    return c
+
+
+def execute_gql(
+    query: str,
+    variables: Optional[Dict[str, Any]] = None,
+    *,
+    client: Optional[httpx.Client] = None,
+) -> Dict[str, Any]:
+    c = client or _get_client()
+    resp = c.post("", json={"query": query, "variables": variables or {}})
+    try:
+        payload = resp.json()
+    except json.JSONDecodeError as e:
+        raise RuntimeError(
+            f"GraphQL 回應非 JSON (HTTP {resp.status_code}): {resp.text[:2000]}"
+        ) from e
+
+    if resp.status_code >= 400:
+        err_detail = payload if isinstance(payload, dict) else resp.text
+        raise RuntimeError(f"GraphQL HTTP {resp.status_code}: {err_detail}")
+
     if "errors" in payload:
         raise RuntimeError(f"GraphQL error: {payload['errors']}")
+
     return payload["data"]

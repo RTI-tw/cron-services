@@ -19,6 +19,7 @@ pip install -r requirements.txt
 - `KEYSTONE_GQL_ENDPOINT`：Keystone GraphQL URL（必填）
 - `KEYSTONE_AUTH_TOKEN`：選填，Bearer token
 - `GCP_PROJECT_ID`：選填，便於日後擴充
+- `GQL_POST_MAX_TAKE`：選填，預設 `100`。Keystone 對 `Post` 的 `graphql.maximumTake` 常有上限（例如 100）；`/export/topic-posts-to-gcs` 會依此 **分頁** 拉取 `per_topic_limit × scan_multiplier` 筆，避免單次 `take` 過大導致 GraphQL **HTTP 400**。
 
 Cloud Run 執行身分需能寫入該 bucket（例如 `roles/storage.objectAdmin` 或最小必要權限）。
 
