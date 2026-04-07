@@ -78,7 +78,7 @@ GET /export/contents-to-gcs?prefix=exports/contents/dev&slug=my-content-slug
 | `title` | 貼文標題 |
 | `isPollPost` | 是否為投票貼文（`poll` 關聯或 polls 列表對應） |
 | `contentPreview` | 內文純文字預覽（約 220 字內，已粗略去 HTML） |
-| `imageThumbnailUrl` | 代表圖（`heroImages` 第一張的 `url` 或 `file.url`；相容舊鍵 `heroImage`） |
+| `imageThumbnailUrl` | 代表圖（`heroImages` 第一張的 `file.url`；CMS `Photo` 無頂層 `url`；相容舊鍵 `heroImage`） |
 | `videoThumbnailUrl` | 目前為 `null`；若 CMS 有影片縮圖欄位，需在查詢與 `_shape_post` 補上 |
 | `topReactions` | 前三名心情：`[{ "emotion": "<鍵值>", "count": 12 }, …]`；需在 GQL 的 `reactions { ... }` 選出實際心情欄位（程式會辨識 `emotion`／`type`／`kind` 等常見鍵名） |
 | `reactionCount` | 心情總則數（有心情欄位時為各類加總；僅有 `id` 時為 `reactions` 筆數） |

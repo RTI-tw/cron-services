@@ -83,7 +83,6 @@ query TopicPostsPage($tid: ID!, $skip: Int!, $take: Int!) {{
     }}
     heroImages {{
       id
-      url
       file {{ url }}
     }}
     poll {{
