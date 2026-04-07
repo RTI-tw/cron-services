@@ -44,7 +44,7 @@ def _build_posts_page_query(status_enum_token: str) -> str:
 query TopicPostsPage($tid: ID!, $skip: Int!, $take: Int!) {{
   posts(
     where: {{
-      topic: {{ id: {{ equals: $tid }} }}
+      topics: {{ some: {{ id: {{ equals: $tid }} }} }}
       status: {{ equals: {status_enum_token} }}
     }}
     orderBy: {{ createdAt: desc }}
@@ -65,7 +65,7 @@ query TopicPostsPage($tid: ID!, $skip: Int!, $take: Int!) {{
     createdAt
     updatedAt
     comments {{ id }}
-    topic {{ id slug name }}
+    topics {{ id slug name }}
   }}
 }}
 """
@@ -134,6 +134,8 @@ def _collect_poll_post_ids(batch_size: int = 200) -> Set[str]:
 
 
 def _shape_post(p: Dict[str, Any]) -> Dict[str, Any]:
+    topics_list = p.get("topics") or []
+    first_topic = topics_list[0] if topics_list else None
     return {
         "id": p.get("id"),
         "title": p.get("title"),
@@ -149,7 +151,8 @@ def _shape_post(p: Dict[str, Any]) -> Dict[str, Any]:
         "createdAt": p.get("createdAt"),
         "updatedAt": p.get("updatedAt"),
         "commentsCount": len((p.get("comments") or [])),
-        "topic": p.get("topic"),
+        "topic": first_topic,
+        "topics": topics_list,
     }
 
 
