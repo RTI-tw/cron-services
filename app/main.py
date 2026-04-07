@@ -24,14 +24,13 @@ def _export_contents_query(
         le=1000,
         description=schemas.ExportContentsToGcsRequest.model_fields["page_size"].description,
     ),
-    content_id: Optional[str] = Query(
+    slug: Optional[str] = Query(
         default=None,
-        alias="id",
-        description=schemas.ExportContentsToGcsRequest.model_fields["id"].description,
+        description=schemas.ExportContentsToGcsRequest.model_fields["slug"].description,
     ),
 ) -> schemas.ExportContentsToGcsRequest:
     return schemas.ExportContentsToGcsRequest(
-        prefix=prefix, page_size=page_size, id=content_id
+        prefix=prefix, page_size=page_size, slug=slug
     )
 
 
@@ -123,7 +122,7 @@ async def export_contents_to_gcs(
             export_all_contents_to_gcs,
             prefix=body.prefix,
             page_size=body.page_size,
-            content_id=body.id,
+            content_slug=body.slug,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e

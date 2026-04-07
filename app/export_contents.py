@@ -24,9 +24,9 @@ query ListContents($skip: Int!, $take: Int!) {
 }
 """
 
-QUERY_CONTENT_BY_ID = """
-query GetContentById($id: ID!) {
-  content(where: { id: $id }) {
+QUERY_CONTENT_BY_IDENTIFIER = """
+query GetContentByIdentifier($identifier: String!) {
+  content(where: { identifier: { equals: $identifier } }) {
     id
     identifier
     content
@@ -52,11 +52,11 @@ def export_all_contents_to_gcs(
     *,
     prefix: str = "exports/contents",
     page_size: int = 200,
-    content_id: str | None = None,
+    content_slug: str | None = None,
 ) -> Dict[str, Any]:
     """
     透過 Keystone GraphQL 取得全部 contents，逐筆上傳為獨立 JSON 檔案到 GCS。
-    物件路徑為 ``{prefix}/{identifier 或 id}-{id}.json``，每次執行覆寫同一路徑。
+    物件路徑為 ``{prefix}/{slug}.json``（slug 即 Keystone ``identifier``；若缺則退回 ``{id}.json``），每次執行覆寫同一路徑。
     """
     settings = get_settings()
     bucket_name = settings.gcs_bucket
@@ -84,7 +84,7 @@ def export_all_contents_to_gcs(
         file_stem = identifier if identifier else item_id
         # 避免路徑分隔符影響物件路徑
         file_stem = file_stem.replace("/", "_")
-        stem = f"{file_stem}-{item_id}.json"
+        stem = f"{file_stem}.json"
         object_path = f"{base_dir}/{stem}" if base_dir else stem
 
         payload = json.dumps(row, ensure_ascii=False, indent=2)
@@ -94,12 +94,12 @@ def export_all_contents_to_gcs(
         uploaded_paths.append(object_path)
         total += 1
 
-    target_id = (content_id or "").strip()
-    if target_id:
-        data = execute_gql(QUERY_CONTENT_BY_ID, {"id": target_id})
+    target_slug = (content_slug or "").strip()
+    if target_slug:
+        data = execute_gql(QUERY_CONTENT_BY_IDENTIFIER, {"identifier": target_slug})
         row = data.get("content")
         if not row:
-            raise ValueError(f"content id={target_id} 不存在")
+            raise ValueError(f"content slug (identifier)={target_slug!r} 不存在")
         upload_row(row)
     else:
         while True:

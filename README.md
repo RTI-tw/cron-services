@@ -41,15 +41,15 @@ Query 參數（皆有預設值，可省略）：
 |------|------|
 | `prefix` | GCS 路徑前綴，預設 `exports/contents` |
 | `page_size` | 每次 GraphQL 擷取筆數，預設 `200`（1–1000） |
-| `id` | 選填；若提供則只匯出該筆 content，未提供則分頁匯出全部 |
+| `slug` | 選填；Keystone 的 `identifier`（slug）。若提供則只匯出該筆，未提供則分頁匯出全部 |
 
-每次執行都寫入 **同一個 `prefix` 路徑**，檔名為 `{identifier 或 id}-{id}.json`，會 **覆寫** 既有同名物件；若 Keystone 已刪除某筆 content，GCS 裡舊檔不會自動刪除。
+每次執行都寫入 **同一個 `prefix` 路徑**，檔名為 **`{slug}.json`**（slug 即 `identifier`；若該筆無 `identifier` 則退回 `{id}.json`），會 **覆寫** 既有同名物件；若 Keystone 已刪除某筆 content，GCS 裡舊檔不會自動刪除。
 
 範例：
 
 ```
 GET /export/contents-to-gcs?prefix=exports/contents/dev&page_size=200
-GET /export/contents-to-gcs?prefix=exports/contents/dev&id=clxxxxxxxxxxxxxxxxxxxx
+GET /export/contents-to-gcs?prefix=exports/contents/dev&slug=my-content-slug
 ```
 
 ### `GET /export/topic-posts-to-gcs`

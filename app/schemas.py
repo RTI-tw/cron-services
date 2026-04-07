@@ -9,9 +9,9 @@ class ExportContentsToGcsRequest(BaseModel):
         description="GCS 目錄前綴（不含時間戳）；每次匯出覆寫該前綴下同名檔案",
     )
     page_size: int = Field(default=200, ge=1, le=1000, description="每次 GQL 擷取筆數")
-    id: Optional[str] = Field(
+    slug: Optional[str] = Field(
         default=None,
-        description="選填；若提供則只匯出指定 content id，未提供則匯出全部",
+        description="選填；Keystone Content.identifier（slug）。若提供則只匯出該筆，未提供則匯出全部",
     )
 
 
