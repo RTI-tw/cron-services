@@ -80,13 +80,8 @@ query TopicPostsPage($tid: ID!, $skip: Int!, $take: Int!) {{
       id
       name
       nickname
-      username
-      photo {{
-        url
-        file {{ url }}
-      }}
     }}
-    heroImage {{
+    heroImages {{
       id
       url
       file {{ url }}
@@ -95,7 +90,7 @@ query TopicPostsPage($tid: ID!, $skip: Int!, $take: Int!) {{
       id
     }}
     reactions(take: 5000) {{
-      emotion
+      id
     }}
     comments {{ id }}
     topics {{ id slug name }}
@@ -203,12 +198,31 @@ def _media_url(node: Any) -> Optional[str]:
 
 
 def _author_user_icon_url(author: Dict[str, Any]) -> Optional[str]:
-    """依序嘗試 Member 上常見的圖片欄位（目前 GQL 僅查 photo，其餘供擴充後自動帶出）。"""
-    for fld in ("photo", "avatar", "icon", "image"):
-        u = _media_url(author.get(fld))
+    """Member 頭貼：依序讀取 GQL 回傳物件上常見的圖片欄位（需在查詢中一併選出）。"""
+    for fld in ("photo", "avatar", "icon", "image", "profileImage", "headshot"):
+        node = author.get(fld)
+        u = _media_url(node)
         if u:
             return u
     return None
+
+
+def _reaction_emotion_key_from_row(r: Dict[str, Any]) -> str:
+    """Keystone Reaction 上心情欄位名稱因專案而異，能查到的鍵都會納入統計。"""
+    for key in (
+        "emotion",
+        "type",
+        "emotionType",
+        "reactionType",
+        "kind",
+        "feeling",
+        "mood",
+        "label",
+    ):
+        v = r.get(key)
+        if v is not None and str(v).strip():
+            return str(v).strip()
+    return ""
 
 
 def _reaction_top_and_total(reactions: Any) -> Tuple[List[Dict[str, Any]], int]:
@@ -217,13 +231,31 @@ def _reaction_top_and_total(reactions: Any) -> Tuple[List[Dict[str, Any]], int]:
     for r in rows:
         if not isinstance(r, dict):
             continue
-        em = str(r.get("emotion") or "").strip()
+        em = _reaction_emotion_key_from_row(r)
         if em:
             counts[em] = counts.get(em, 0) + 1
-    total = sum(counts.values())
+    # 若未查回任何心情欄位，reactionCount 改為 reaction 筆數
+    total = sum(counts.values()) if counts else len(rows)
     top_pairs = sorted(counts.items(), key=lambda x: (-x[1], x[0]))[:3]
     top_reactions = [{"emotion": e, "count": c} for e, c in top_pairs]
     return top_reactions, total
+
+
+def _first_hero_image_url(p: Dict[str, Any]) -> Optional[str]:
+    raw = p.get("heroImages")
+    if isinstance(raw, list):
+        for item in raw:
+            u = _media_url(item)
+            if u:
+                return u
+    if isinstance(raw, dict):
+        u = _media_url(raw)
+        if u:
+            return u
+    legacy = p.get("heroImage")
+    if isinstance(legacy, dict):
+        return _media_url(legacy)
+    return None
 
 
 def _shape_post(p: Dict[str, Any], poll_post_ids: Set[str]) -> Dict[str, Any]:
@@ -251,8 +283,7 @@ def _shape_post(p: Dict[str, Any], poll_post_ids: Set[str]) -> Dict[str, Any]:
 
     top_reactions, reaction_count = _reaction_top_and_total(p.get("reactions"))
 
-    hero = p.get("heroImage") if isinstance(p.get("heroImage"), dict) else {}
-    image_thumbnail_url = _media_url(hero)
+    image_thumbnail_url = _first_hero_image_url(p)
 
     comments = p.get("comments") or []
     comment_count = len(comments) if isinstance(comments, list) else 0
@@ -269,7 +300,8 @@ def _shape_post(p: Dict[str, Any], poll_post_ids: Set[str]) -> Dict[str, Any]:
     if author:
         member_id = author.get("id")
         nickname = author.get("nickname") or author.get("name")
-        username = author.get("username")
+        # CMS 無 username 欄位時，以 name 作為顯示用「用戶名稱」
+        username = author.get("username") or author.get("name")
         user_icon_url = _author_user_icon_url(author)
 
     return {

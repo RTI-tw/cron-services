@@ -69,22 +69,22 @@ GET /export/contents-to-gcs?prefix=exports/contents/dev&slug=my-content-slug
 
 | 欄位 | 說明 |
 |------|------|
-| `userIconUrl` | 作者頭貼 URL（來自 GraphQL `author.photo`；可改查詢以對齊 CMS） |
+| `userIconUrl` | 作者頭貼 URL（需在 GQL 的 `author { ... }` 選出 CMS 實際的圖片欄位，如 `photo`／`icon`；目前預設查詢未含圖片則為 `null`） |
 | `nickname` | 暱稱（`author.nickname`，無則退回 `author.name`） |
-| `username` | 用戶名稱 |
+| `username` | 用戶名稱（CMS 無 `username` 時退回 `author.name`） |
 | `memberId` | 作者 Member `id` |
 | `topicTags` | 貼文所屬 topics：`[{ id, slug, name }, …]` |
 | `postPreview` | 標題 + 內文純文字摘要（約 320 字內） |
 | `title` | 貼文標題 |
 | `isPollPost` | 是否為投票貼文（`poll` 關聯或 polls 列表對應） |
 | `contentPreview` | 內文純文字預覽（約 220 字內，已粗略去 HTML） |
-| `imageThumbnailUrl` | 代表圖／hero 縮圖（`heroImage` 的 `url` 或 `file.url`） |
+| `imageThumbnailUrl` | 代表圖（`heroImages` 第一張的 `url` 或 `file.url`；相容舊鍵 `heroImage`） |
 | `videoThumbnailUrl` | 目前為 `null`；若 CMS 有影片縮圖欄位，需在查詢與 `_shape_post` 補上 |
-| `topReactions` | 前三名心情：`[{ "emotion": "happy", "count": 12 }, …]`（依數量降序） |
-| `reactionCount` | 該貼文心情總則數（僅統計已查回之 `reactions`） |
+| `topReactions` | 前三名心情：`[{ "emotion": "<鍵值>", "count": 12 }, …]`；需在 GQL 的 `reactions { ... }` 選出實際心情欄位（程式會辨識 `emotion`／`type`／`kind` 等常見鍵名） |
+| `reactionCount` | 心情總則數（有心情欄位時為各類加總；僅有 `id` 時為 `reactions` 筆數） |
 | `commentCount` | 留言數（與 `commentsCount` 相同，後者為相容舊鍵名） |
 
-另保留 `content`、多語欄位、`author` 原始物件等供進階使用。若 GraphQL 驗證失敗（例如 Member 圖片欄位不是 `photo`、或 `reactions(take: …)` 語法不符），請依實際 Keystone schema 調整 `app/export_topic_posts.py` 內查詢。
+另保留 `content`、多語欄位、`author` 原始物件等供進階使用。目前查詢對齊 RTI forum：`author` 僅 `id`／`name`／`nickname`；`heroImages`；`reactions` 僅 `id`（避免 schema 無 `emotion` 時驗證失敗）。若要在 JSON 顯示頭貼或心情統計，請在 `app/export_topic_posts.py` 的查詢區塊補上 CMS 實際欄位名，並視需要擴充 `_reaction_emotion_key_from_row` 或 `_author_user_icon_url` 的鍵名列表。
 
 Query 參數：
 
