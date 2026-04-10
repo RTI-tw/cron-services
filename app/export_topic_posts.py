@@ -44,7 +44,6 @@ _POST_CARD_SELECTION = f"""
       id
       name
       nickname
-      avatar
       avatar_image {{
 {_PHOTO_FIELDS}
       }}
