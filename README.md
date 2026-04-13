@@ -100,7 +100,7 @@ GET /export/topic-posts-to-gcs?prefix=json/topics&per_topic_limit=100&post_state
 
 - 先放該 topic `isBoost=true` 的貼文
 - 再依熱門規則補齊：3天積分門檻（Reaction*2 + PollVote*3 + Comment*5）
-- 不足時 fallback：3天最高分（Top50）→ 14天最高分（Top50）→ 最新文章前10篇；若仍為空，JSON 會回傳 `emptyMessage: "尚無貼文"`
+- fallback：先取 3 天內「達門檻（`HOT_SCORE_THRESHOLD`，預設 5）」且積分 Top50；若不足則改抓 14 天內積分 Top50；若 14 天內仍無互動則改用最新文章前 10 篇遞補。若仍為空，JSON 會回傳 `emptyMessage: "尚無貼文"`
 
 | 參數 | 說明 |
 |------|------|

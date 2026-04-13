@@ -341,11 +341,12 @@ def _build_per_topic_result(
     pop_posts: List[Dict[str, Any]]
     pop_count: int
 
-    if hot_3d_posts:
-        ranked_3d = _rank_hot_posts(hot_3d_posts)
-        eligible = [p for p in ranked_3d if _hot_score(p) >= threshold]
-        ranked_pop = eligible if eligible else ranked_3d
-        pop_posts = _merge_boost_first(boost_posts, ranked_pop, pop_take)
+    ranked_3d = _rank_hot_posts(hot_3d_posts) if hot_3d_posts else []
+    eligible_3d = [p for p in ranked_3d if _hot_score(p) >= threshold]
+
+    if eligible_3d:
+        # 第一層：僅採用 3 天內達門檻的熱門文（再由 boost 置頂優先）
+        pop_posts = _merge_boost_first(boost_posts, eligible_3d, pop_take)
         pop_count = hot_3d_count
     else:
         hot_14d = execute_gql(
@@ -355,12 +356,14 @@ def _build_per_topic_result(
         )
         hot_14d_posts = hot_14d.get("posts") or []
         hot_14d_count = _to_int(hot_14d.get("postsCount"))
-        if hot_14d_posts:
-            ranked_14d = _rank_hot_posts(hot_14d_posts)
+        ranked_14d = _rank_hot_posts(hot_14d_posts) if hot_14d_posts else []
+        has_interaction_14d = any(_hot_score(p) > 0 for p in ranked_14d)
+        if ranked_14d and has_interaction_14d:
+            # 第二層：延長到 14 天，取積分最高的熱門文（再由 boost 置頂優先）
             pop_posts = _merge_boost_first(boost_posts, ranked_14d, pop_take)
             pop_count = hot_14d_count
         else:
-            # 第三層 fallback：僅用最新前 10 篇遞補
+            # 第三層 fallback：14 天內若沒有互動，改用最新前 10 篇遞補
             pop_posts = _merge_boost_first(boost_posts, latest_posts[:10], pop_take)
             pop_count = latest_count
 
