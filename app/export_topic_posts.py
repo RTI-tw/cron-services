@@ -199,12 +199,13 @@ query TopicPolls($slug: String!, $take: Int!) {{
 def _build_query_topic_hot_window(status_token: str) -> str:
     w = _where_topic_by_slug_status(status_token, with_since=True)
     return f"""
-query TopicHotWindow($slug: String!, $take: Int!, $since: DateTime!) {{
+query TopicHotWindow($slug: String!, $take: Int!, $skip: Int!, $since: DateTime!) {{
   posts(
     where: {{
       {w}
     }}
     orderBy: [{{ createdAt: desc }}]
+    skip: $skip
     take: $take
   ) {{
 {_POST_CARD_SELECTION}
@@ -284,6 +285,44 @@ def _merge_boost_first(boost_posts: List[Dict[str, Any]], ranked_posts: List[Dic
     return out
 
 
+def _fetch_posts_in_pages(
+    query: str,
+    variables: Dict[str, Any],
+    *,
+    total_limit: int,
+    client: Any = None,
+) -> Tuple[List[Dict[str, Any]], int]:
+    if total_limit <= 0:
+        return [], 0
+
+    page_size = min(_max_take_per_request(), total_limit)
+    skip = 0
+    posts: List[Dict[str, Any]] = []
+    posts_count = 0
+
+    while len(posts) < total_limit:
+        page_take = min(page_size, total_limit - len(posts))
+        data = execute_gql(
+            query,
+            {
+                **variables,
+                "skip": skip,
+                "take": page_take,
+            },
+            client=client,
+        )
+        page_posts = data.get("posts") or []
+        posts_count = _to_int(data.get("postsCount"))
+        if not page_posts:
+            break
+        posts.extend(page_posts)
+        skip += len(page_posts)
+        if len(page_posts) < page_take:
+            break
+
+    return posts[:total_limit], posts_count
+
+
 def _topic_payload(generated_at: str, topic_row: Dict[str, Any], posts_count: int, posts: List[Dict[str, Any]]) -> Dict[str, Any]:
     return {
         "generatedAt": generated_at,
@@ -326,13 +365,12 @@ def _build_per_topic_result(
     polls_posts = polls_data.get("posts") or []
     polls_count = _to_int(polls_data.get("postsCount"))
 
-    hot_3d = execute_gql(
+    hot_3d_posts, hot_3d_count = _fetch_posts_in_pages(
         q_hot_window,
-        {"slug": slug, "take": hot_scan_take, "since": since_3d},
+        {"slug": slug, "since": since_3d},
+        total_limit=hot_scan_take,
         client=client,
     )
-    hot_3d_posts = hot_3d.get("posts") or []
-    hot_3d_count = _to_int(hot_3d.get("postsCount"))
 
     boost_data = execute_gql(q_boost, {"slug": slug, "take": pop_take}, client=client)
     boost_posts = boost_data.get("posts") or []
@@ -348,13 +386,12 @@ def _build_per_topic_result(
         pop_posts = _merge_boost_first(boost_posts, eligible_3d, pop_take)
         pop_count = hot_3d_count
     else:
-        hot_14d = execute_gql(
+        hot_14d_posts, hot_14d_count = _fetch_posts_in_pages(
             q_hot_window,
-            {"slug": slug, "take": hot_scan_take, "since": since_14d},
+            {"slug": slug, "since": since_14d},
+            total_limit=hot_scan_take,
             client=client,
         )
-        hot_14d_posts = hot_14d.get("posts") or []
-        hot_14d_count = _to_int(hot_14d.get("postsCount"))
         ranked_14d = _rank_hot_posts(hot_14d_posts) if hot_14d_posts else []
         has_interaction_14d = any(_hot_score(p) > 0 for p in ranked_14d)
         if ranked_14d and has_interaction_14d:
@@ -398,10 +435,7 @@ def _export_topic_files_to_gcs(
     status_token = _resolve_post_status(post_state)
     take = min(per_topic_limit, _max_take_per_request())
     pop_take = _pop_take_limit(_max_take_per_request())
-    hot_scan_take = min(
-        max(pop_take, per_topic_limit * scan_multiplier),
-        _max_take_per_request(),
-    )
+    hot_scan_take = max(pop_take, per_topic_limit * scan_multiplier)
     threshold = _hot_threshold()
 
     q_latest = _build_query_topic_latest(status_token)

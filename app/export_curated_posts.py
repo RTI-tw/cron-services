@@ -6,6 +6,7 @@ from google.cloud import storage
 from .config import get_settings
 from .export_topic_posts import (
     _POST_CARD_SELECTION,
+    _fetch_posts_in_pages,
     _hot_score,
     _hot_threshold,
     _max_take_per_request,
@@ -80,12 +81,13 @@ query CuratedPolls($take: Int!) {{
 def _build_query_curated_hot_window(status_token: str, flag_field: str) -> str:
     w = _where_curated_status(status_token, flag_field, with_since=True)
     return f"""
-query CuratedHotWindow($take: Int!, $since: DateTime!) {{
+query CuratedHotWindow($take: Int!, $skip: Int!, $since: DateTime!) {{
   posts(
     where: {{
       {w}
     }}
     orderBy: [{{ createdAt: desc }}]
+    skip: $skip
     take: $take
   ) {{
 {_POST_CARD_SELECTION}
@@ -166,9 +168,11 @@ def _build_curated_group_result(
     polls_posts = polls_data.get("posts") or []
     polls_count = _to_int(polls_data.get("postsCount"))
 
-    hot_3d = execute_gql(q_hot_window, {"take": hot_scan_take, "since": since_3d})
-    hot_3d_posts = hot_3d.get("posts") or []
-    hot_3d_count = _to_int(hot_3d.get("postsCount"))
+    hot_3d_posts, hot_3d_count = _fetch_posts_in_pages(
+        q_hot_window,
+        {"since": since_3d},
+        total_limit=hot_scan_take,
+    )
 
     boost_data = execute_gql(q_boost, {"take": pop_take})
     boost_posts = boost_data.get("posts") or []
@@ -180,9 +184,11 @@ def _build_curated_group_result(
         pop_posts = _merge_boost_first(boost_posts, eligible_3d, pop_take)
         pop_count = hot_3d_count
     else:
-        hot_14d = execute_gql(q_hot_window, {"take": hot_scan_take, "since": since_14d})
-        hot_14d_posts = hot_14d.get("posts") or []
-        hot_14d_count = _to_int(hot_14d.get("postsCount"))
+        hot_14d_posts, hot_14d_count = _fetch_posts_in_pages(
+            q_hot_window,
+            {"since": since_14d},
+            total_limit=hot_scan_take,
+        )
         ranked_14d = _rank_hot_posts(hot_14d_posts) if hot_14d_posts else []
         has_interaction_14d = any(_hot_score(p) > 0 for p in ranked_14d)
         if ranked_14d and has_interaction_14d:
@@ -222,7 +228,7 @@ def export_curated_posts_to_gcs(
     max_take = _max_take_per_request()
     take = min(limit, max_take)
     pop_take = _pop_take_limit(max_take)
-    hot_scan_take = min(max(pop_take, limit * scan_multiplier), max_take)
+    hot_scan_take = max(pop_take, limit * scan_multiplier)
     threshold = _hot_threshold()
 
     now = datetime.now(timezone.utc)

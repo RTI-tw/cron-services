@@ -79,7 +79,7 @@ GET /export/contents-to-gcs?prefix=exports/contents/dev&slug=my-content-slug
 }
 ```
 
-**無 `slug` 的 topic** 不會產檔（前端 query 亦依賴 slug）。`scan_multiplier` 目前用於熱門候選池大小（`hot_scan_take = min(per_topic_limit * scan_multiplier, GQL_POST_MAX_TAKE)`）。
+**無 `slug` 的 topic** 不會產檔（前端 query 亦依賴 slug）。`scan_multiplier` 用於熱門候選池總量；服務會用分頁方式掃描最多 `max(50, per_topic_limit * scan_multiplier)` 篇候選，再依積分排序。
 
 Query 參數：
 
@@ -100,7 +100,7 @@ GET /export/topic-posts-to-gcs?prefix=json/topics&per_topic_limit=100&post_state
 
 - 先放該 topic `isBoost=true` 的貼文
 - 再依熱門規則補齊：3天積分門檻（Reaction*2 + PollVote*3 + Comment*5）
-- fallback：先取 3 天內「達門檻（`HOT_SCORE_THRESHOLD`，預設 5）」且積分 Top50；若不足則改抓 14 天內積分 Top50；若 14 天內仍無互動則改用最新文章前 10 篇遞補。若仍為空，JSON 會回傳 `emptyMessage: "尚無貼文"`
+- fallback：先取 3 天內候選池中「達門檻（`HOT_SCORE_THRESHOLD`，預設 5）」的積分排序結果；若不足則改抓 14 天內候選池做積分排序；若 14 天內仍無互動則改用最新文章前 10 篇遞補。若仍為空，JSON 會回傳 `emptyMessage: "尚無貼文"`
 
 | 參數 | 說明 |
 |------|------|
