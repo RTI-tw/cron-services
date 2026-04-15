@@ -62,7 +62,6 @@ _POST_CARD_SELECTION = f"""
       name_th
       slug
     }}
-    topicsCount
     heroImages(orderBy: {{ sortOrder: asc }}) {{
 {_PHOTO_FIELDS}
     }}
@@ -148,7 +147,7 @@ def _pop_take_limit(max_take: int) -> int:
 def _where_topic_by_slug_status(status_token: str, *, with_poll: bool = False, with_since: bool = False) -> str:
     parts = [
         f"status: {{ equals: {status_token} }}",
-        "topics: { some: { slug: { equals: $slug } } }",
+        "topics: { slug: { equals: $slug } }",
     ]
     if with_since:
         parts.append("createdAt: { gte: $since }")

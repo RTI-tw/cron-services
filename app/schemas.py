@@ -38,6 +38,52 @@ class ExportTopicPostsToGcsRequest(BaseModel):
     )
 
 
+class ExportCuratedPostsToGcsRequest(BaseModel):
+    prefix: str = Field(
+        default="exports/curated-posts",
+        description="GCS 目錄前綴（不含時間戳）；寫入 editor-choice/life-guide 的 latest/pop/polls.json，每次覆寫",
+    )
+    limit: int = Field(
+        default=10,
+        ge=1,
+        le=200,
+        description="每種 JSON 取幾則文章，並受環境變數 GQL_POST_MAX_TAKE 上限",
+    )
+    post_state: str = Field(
+        default="active",
+        description="文章狀態；active 會映射為 where status equals published",
+    )
+    scan_multiplier: int = Field(
+        default=10,
+        ge=1,
+        le=50,
+        description="熱門候選池倍率（只影響 -pop.json；候選數約為 limit * scan_multiplier，並受 GQL_POST_MAX_TAKE 上限）",
+    )
+
+
+class ExportAllPostsToGcsRequest(BaseModel):
+    prefix: str = Field(
+        default="exports/all-posts",
+        description="GCS 目錄前綴（不含時間戳）；寫入 all-posts 的 latest/pop/polls.json，每次覆寫",
+    )
+    limit: int = Field(
+        default=10,
+        ge=1,
+        le=200,
+        description="每種 JSON 取幾則文章，並受環境變數 GQL_POST_MAX_TAKE 上限",
+    )
+    post_state: str = Field(
+        default="active",
+        description="文章狀態；active 會映射為 where status equals published",
+    )
+    scan_multiplier: int = Field(
+        default=10,
+        ge=1,
+        le=50,
+        description="熱門候選池倍率（只影響 -pop.json；候選數約為 limit * scan_multiplier，並受 GQL_POST_MAX_TAKE 上限）",
+    )
+
+
 class ExportTopicsDailyStatsToGcsRequest(BaseModel):
     prefix: str = Field(
         default="exports/topic-daily-stats",

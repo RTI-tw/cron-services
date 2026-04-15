@@ -63,7 +63,7 @@ GET /export/contents-to-gcs?prefix=exports/contents/dev&slug=my-content-slug
 | `{slug}-latest.json` | `TopicLatest` | `orderBy: [{ createdAt: desc }]` |
 | `{slug}-polls.json` | `TopicPolls` | `where` 多 `NOT: [{ poll: null }]` |
 
-- **篩選**：`topics: { some: { slug: { equals: $slug } } }` + `status`（`post_state=active` 時為 enum：`equals: published`，**不可**寫成字串 `"published"`）。
+- **篩選**：`topics: { slug: { equals: $slug } }` + `status`（`post_state=active` 時為 enum：`equals: published`，**不可**寫成字串 `"published"`）。
 - **變數**：`$slug`、`$take`；`take` = `per_topic_limit`（並受 `GQL_POST_MAX_TAKE` 上限，預設 100）。
 - **`posts` 內容**：與前端 `PostCardFields` + `PhotoFields` 相同選取，**不做後端欄位轉換**，前端可直接沿用型別。
 - **`postsCount`**：與前端相同之 `postsCount(where: …)`，供判斷是否還有更多筆。
@@ -111,6 +111,92 @@ GET /export/topic-posts-to-gcs?prefix=json/topics&per_topic_limit=100&post_state
 
 ```
 GET /export/topic-pops-to-gcs?prefix=json/topics&per_topic_limit=100&post_state=active&scan_multiplier=10
+```
+
+### `GET /export/curated-posts-to-gcs`
+
+針對全站 `posts`，依兩個布林欄位分別產出六種 JSON：
+
+| 檔名 | 篩選條件 | 排序 / 規則 |
+|------|----------|-------------|
+| `editor-choice-latest.json` | `isEditorChoice=true` | `createdAt desc` |
+| `editor-choice-polls.json` | `isEditorChoice=true` 且 `poll != null` | `createdAt desc` |
+| `editor-choice-pop.json` | `isEditorChoice=true` | 與 topic pop 相同：Boost 優先 + 熱門積分 + fallback |
+| `life-guide-latest.json` | `isLifeGuide=true` | `createdAt desc` |
+| `life-guide-polls.json` | `isLifeGuide=true` 且 `poll != null` | `createdAt desc` |
+| `life-guide-pop.json` | `isLifeGuide=true` | 與 topic pop 相同：Boost 優先 + 熱門積分 + fallback |
+
+- **篩選**：`status`（`post_state=active` 時為 enum：`equals: published`）加上對應布林欄位 `isEditorChoice` 或 `isLifeGuide`。
+- **`posts` 內容**：與現有 topic export 一致，沿用前端 `PostCardFields` + `PhotoFields`。
+- **`postsCount`**：回傳該條件下的 `postsCount(where: …)`。
+
+每個 JSON 結構統一為：
+
+```json
+{
+  "generatedAt": "...",
+  "collection": {
+    "key": "editor-choice",
+    "label": "編輯精選",
+    "flag": "isEditorChoice"
+  },
+  "postsCount": 42,
+  "posts": [ ... ]
+}
+```
+
+Query 參數：
+
+| 參數 | 說明 |
+|------|------|
+| `prefix` | 預設 `exports/curated-posts` |
+| `limit` | 每種 JSON 擷取幾則文章（1–200），實際 `min(limit, GQL_POST_MAX_TAKE)` |
+| `post_state` | 預設 `active` → where 使用 `published` |
+| `scan_multiplier` | 熱門候選池倍率（只影響 `*-pop.json`） |
+
+```
+GET /export/curated-posts-to-gcs?prefix=json/curated&limit=100&post_state=active&scan_multiplier=10
+```
+
+### `GET /export/all-posts-to-gcs`
+
+針對全站所有 `posts` 產出三種 JSON：
+
+| 檔名 | 篩選條件 | 排序 / 規則 |
+|------|----------|-------------|
+| `all-posts-latest.json` | 所有符合 `status` 的文章 | `createdAt desc` |
+| `all-posts-polls.json` | 所有符合 `status` 且 `poll != null` 的文章 | `createdAt desc` |
+| `all-posts-pop.json` | 所有符合 `status` 的文章 | 與 topic pop 相同：Boost 優先 + 熱門積分 + fallback |
+
+- **篩選**：僅套用 `status`（`post_state=active` 時為 enum：`equals: published`）。
+- **`posts` 內容**：與現有 topic export / curated export 一致，沿用前端 `PostCardFields` + `PhotoFields`。
+- **`postsCount`**：回傳該條件下的 `postsCount(where: …)`。
+
+每個 JSON 結構統一為：
+
+```json
+{
+  "generatedAt": "...",
+  "collection": {
+    "key": "all-posts",
+    "label": "所有文章"
+  },
+  "postsCount": 42,
+  "posts": [ ... ]
+}
+```
+
+Query 參數：
+
+| 參數 | 說明 |
+|------|------|
+| `prefix` | 預設 `exports/all-posts` |
+| `limit` | 每種 JSON 擷取幾則文章（1–200），實際 `min(limit, GQL_POST_MAX_TAKE)` |
+| `post_state` | 預設 `active` → where 使用 `published` |
+| `scan_multiplier` | 熱門候選池倍率（只影響 `all-posts-pop.json`） |
+
+```
+GET /export/all-posts-to-gcs?prefix=json/all-posts&limit=100&post_state=active&scan_multiplier=10
 ```
 
 ### `GET /export/topics-daily-stats-to-gcs`

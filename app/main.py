@@ -5,7 +5,9 @@ from typing import Annotated, Optional
 from fastapi import Depends, FastAPI, HTTPException, Query
 
 from . import schemas
+from .export_all_posts import export_all_posts_to_gcs
 from .export_contents import export_all_contents_to_gcs
+from .export_curated_posts import export_curated_posts_to_gcs
 from .export_topic_posts import export_topic_pops_to_gcs, export_topic_posts_to_gcs
 from .export_topics_daily_stats import export_topics_daily_stats_to_gcs
 
@@ -96,6 +98,66 @@ def _export_topics_daily_stats_query(
         timezone=timezone_name,
         local_date=local_date,
         post_state=post_state,
+    )
+
+
+def _export_curated_posts_query(
+    prefix: str = Query(
+        default="exports/curated-posts",
+        description=schemas.ExportCuratedPostsToGcsRequest.model_fields["prefix"].description,
+    ),
+    limit: int = Query(
+        default=10,
+        ge=1,
+        le=200,
+        description=schemas.ExportCuratedPostsToGcsRequest.model_fields["limit"].description,
+    ),
+    post_state: str = Query(
+        default="active",
+        description=schemas.ExportCuratedPostsToGcsRequest.model_fields["post_state"].description,
+    ),
+    scan_multiplier: int = Query(
+        default=10,
+        ge=1,
+        le=50,
+        description=schemas.ExportCuratedPostsToGcsRequest.model_fields["scan_multiplier"].description,
+    ),
+) -> schemas.ExportCuratedPostsToGcsRequest:
+    return schemas.ExportCuratedPostsToGcsRequest(
+        prefix=prefix,
+        limit=limit,
+        post_state=post_state,
+        scan_multiplier=scan_multiplier,
+    )
+
+
+def _export_all_posts_query(
+    prefix: str = Query(
+        default="exports/all-posts",
+        description=schemas.ExportAllPostsToGcsRequest.model_fields["prefix"].description,
+    ),
+    limit: int = Query(
+        default=10,
+        ge=1,
+        le=200,
+        description=schemas.ExportAllPostsToGcsRequest.model_fields["limit"].description,
+    ),
+    post_state: str = Query(
+        default="active",
+        description=schemas.ExportAllPostsToGcsRequest.model_fields["post_state"].description,
+    ),
+    scan_multiplier: int = Query(
+        default=10,
+        ge=1,
+        le=50,
+        description=schemas.ExportAllPostsToGcsRequest.model_fields["scan_multiplier"].description,
+    ),
+) -> schemas.ExportAllPostsToGcsRequest:
+    return schemas.ExportAllPostsToGcsRequest(
+        prefix=prefix,
+        limit=limit,
+        post_state=post_state,
+        scan_multiplier=scan_multiplier,
     )
 
 
@@ -210,6 +272,62 @@ async def export_topics_daily_stats(
         raise HTTPException(status_code=503, detail=_runtime_error_http_detail(e)) from e
     except Exception as e:  # noqa: BLE001
         logger.exception("export/topics-daily-stats-to-gcs failed: %s", e)
+        raise HTTPException(status_code=502, detail=str(e)) from e
+
+
+@app.get("/export/curated-posts-to-gcs")
+async def export_curated_posts(
+    body: Annotated[
+        schemas.ExportCuratedPostsToGcsRequest,
+        Depends(_export_curated_posts_query),
+    ],
+):
+    """
+    依全站文章中「編輯精選 / 生活須知」條件，分別輸出 latest / polls / pop 六種 JSON 並上傳 GCS。
+    """
+    try:
+        return await asyncio.to_thread(
+            export_curated_posts_to_gcs,
+            prefix=body.prefix,
+            limit=body.limit,
+            post_state=body.post_state,
+            scan_multiplier=body.scan_multiplier,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except RuntimeError as e:
+        logger.warning("export/curated-posts-to-gcs RuntimeError: %s", e)
+        raise HTTPException(status_code=503, detail=_runtime_error_http_detail(e)) from e
+    except Exception as e:  # noqa: BLE001
+        logger.exception("export/curated-posts-to-gcs failed: %s", e)
+        raise HTTPException(status_code=502, detail=str(e)) from e
+
+
+@app.get("/export/all-posts-to-gcs")
+async def export_all_posts(
+    body: Annotated[
+        schemas.ExportAllPostsToGcsRequest,
+        Depends(_export_all_posts_query),
+    ],
+):
+    """
+    依全站所有文章條件，輸出 latest / polls / pop 三種 JSON 並上傳 GCS。
+    """
+    try:
+        return await asyncio.to_thread(
+            export_all_posts_to_gcs,
+            prefix=body.prefix,
+            limit=body.limit,
+            post_state=body.post_state,
+            scan_multiplier=body.scan_multiplier,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except RuntimeError as e:
+        logger.warning("export/all-posts-to-gcs RuntimeError: %s", e)
+        raise HTTPException(status_code=503, detail=_runtime_error_http_detail(e)) from e
+    except Exception as e:  # noqa: BLE001
+        logger.exception("export/all-posts-to-gcs failed: %s", e)
         raise HTTPException(status_code=502, detail=str(e)) from e
 
 
