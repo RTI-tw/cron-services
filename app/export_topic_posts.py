@@ -67,11 +67,7 @@ _POST_CARD_SELECTION = f"""
     }}
     poll {{
       id
-      votesCount
-      participantsCount
       totalVotes
-      totalCount
-      votersCount
     }}
     commentsCount
     reactionsCount
@@ -255,10 +251,7 @@ def _poll_participants(post: Dict[str, Any]) -> int:
     poll = post.get("poll")
     if not isinstance(poll, dict):
         return 0
-    for key in ("votesCount", "participantsCount", "totalVotes", "totalCount", "votersCount"):
-        if key in poll:
-            return _to_int(poll.get(key))
-    return 0
+    return _to_int(poll.get("totalVotes"))
 
 
 def _hot_score(post: Dict[str, Any]) -> int:
