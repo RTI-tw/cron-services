@@ -54,6 +54,26 @@ GET /export/contents-to-gcs?prefix=exports/contents/dev&page_size=200
 GET /export/contents-to-gcs?prefix=exports/contents/dev&slug=my-content-slug
 ```
 
+### `GET /export/home-sections-to-gcs`
+
+一次執行三支固定 GraphQL，並分別輸出到：
+
+- `footer.json`：`contents`（欄位只取 `id/slug/title/order/status`）
+- `editor-choices.json`：固定 `take=4`、`skip=0`、`orderBy=[{ sortOrder: asc }]`
+- `pop-polls.json`：固定 `take=1`，條件 `expiresAt > now(ISO)`，排序 `totalVotes desc`
+
+Query 參數：
+
+| 參數 | 說明 |
+|------|------|
+| `prefix` | 預設 `exports/home-sections` |
+
+範例：
+
+```
+GET /export/home-sections-to-gcs?prefix=exports/home-sections/dev
+```
+
 ### `GET /export/topic-posts-to-gcs`
 
 與前端論壇 GQL 對齊：每個有 `slug` 的 topic 寫入 `latest` / `polls` 兩種檔案（`prefix/` 下），每次執行覆寫。

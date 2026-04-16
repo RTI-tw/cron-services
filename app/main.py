@@ -8,6 +8,7 @@ from . import schemas
 from .export_all_posts import export_all_posts_to_gcs
 from .export_contents import export_all_contents_to_gcs
 from .export_curated_posts import export_curated_posts_to_gcs
+from .export_home_sections import export_home_sections_to_gcs
 from .export_topic_posts import export_topic_pops_to_gcs, export_topic_posts_to_gcs
 from .export_topics_daily_stats import export_topics_daily_stats_to_gcs
 
@@ -68,6 +69,15 @@ def _export_topic_posts_query(
         post_state=post_state,
         scan_multiplier=scan_multiplier,
     )
+
+
+def _export_home_sections_query(
+    prefix: str = Query(
+        default="exports/home-sections",
+        description=schemas.ExportHomeSectionsToGcsRequest.model_fields["prefix"].description,
+    ),
+) -> schemas.ExportHomeSectionsToGcsRequest:
+    return schemas.ExportHomeSectionsToGcsRequest(prefix=prefix)
 
 
 def _export_topics_daily_stats_query(
@@ -243,6 +253,31 @@ async def export_topic_pops(
         raise HTTPException(status_code=503, detail=_runtime_error_http_detail(e)) from e
     except Exception as e:  # noqa: BLE001
         logger.exception("export/topic-pops-to-gcs failed: %s", e)
+        raise HTTPException(status_code=502, detail=str(e)) from e
+
+
+@app.get("/export/home-sections-to-gcs")
+async def export_home_sections(
+    body: Annotated[
+        schemas.ExportHomeSectionsToGcsRequest,
+        Depends(_export_home_sections_query),
+    ],
+):
+    """
+    匯出首頁區塊（footer / editor-choices / pop-polls）JSON 並上傳 GCS。
+    """
+    try:
+        return await asyncio.to_thread(
+            export_home_sections_to_gcs,
+            prefix=body.prefix,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except RuntimeError as e:
+        logger.warning("export/home-sections-to-gcs RuntimeError: %s", e)
+        raise HTTPException(status_code=503, detail=_runtime_error_http_detail(e)) from e
+    except Exception as e:  # noqa: BLE001
+        logger.exception("export/home-sections-to-gcs failed: %s", e)
         raise HTTPException(status_code=502, detail=str(e)) from e
 
 

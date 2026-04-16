@@ -15,6 +15,13 @@ class ExportContentsToGcsRequest(BaseModel):
     )
 
 
+class ExportHomeSectionsToGcsRequest(BaseModel):
+    prefix: str = Field(
+        default="exports/home-sections",
+        description="GCS 目錄前綴（不含時間戳）；寫入 footer.json / editor-choices.json / pop-polls.json，每次覆寫",
+    )
+
+
 class ExportTopicPostsToGcsRequest(BaseModel):
     prefix: str = Field(
         default="exports/topic-posts",
