@@ -66,7 +66,10 @@ GET /export/contents-to-gcs?prefix=exports/contents/dev&slug=my-content-slug
 - **篩選**：`topics: { slug: { equals: $slug } }` + `status`（`post_state=active` 時為 enum：`equals: published`，**不可**寫成字串 `"published"`）。
 - **變數**：`$slug`、`$take`；`take` = `per_topic_limit`（並受 `GQL_POST_MAX_TAKE` 上限，預設 100）。
 - **`posts` 內容**：與前端 `PostCardFields` + `PhotoFields` 相同選取，**不做後端欄位轉換**，前端可直接沿用型別。
-- **`postsCount`**：與前端相同之 `postsCount(where: …)`，供判斷是否還有更多筆。
+- **`postsCount`**：與前端相同之 `postsCount(where: …)`，代表符合條件的總筆數。
+- **`totalCount`**：目前與 `postsCount` 相同，明確表示總筆數。
+- **`hasAll`**：`posts.length >= postsCount`。
+- **`content` trimming**：每筆 post 的 `content` 最多輸出 120 個字元；若原文超過，尾端補上 `......`。
 
 每個 JSON 結構統一為：
 
@@ -75,6 +78,8 @@ GET /export/contents-to-gcs?prefix=exports/contents/dev&slug=my-content-slug
   "generatedAt": "...",
   "topic": { "id": "...", "name": "...", "slug": "..." },
   "postsCount": 42,
+  "totalCount": 42,
+  "hasAll": false,
   "posts": [ ... ]
 }
 ```
@@ -128,7 +133,10 @@ GET /export/topic-pops-to-gcs?prefix=json/topics&per_topic_limit=100&post_state=
 
 - **篩選**：`status`（`post_state=active` 時為 enum：`equals: published`）加上對應布林欄位 `isEditorChoice` 或 `isLifeGuide`。
 - **`posts` 內容**：與現有 topic export 一致，沿用前端 `PostCardFields` + `PhotoFields`。
-- **`postsCount`**：回傳該條件下的 `postsCount(where: …)`。
+- **`postsCount`**：回傳該條件下的 `postsCount(where: …)`，代表符合條件的總筆數。
+- **`totalCount`**：目前與 `postsCount` 相同。
+- **`hasAll`**：`posts.length >= postsCount`。
+- **`content` trimming**：每筆 post 的 `content` 最多輸出 120 個字元；若原文超過，尾端補上 `......`。
 
 每個 JSON 結構統一為：
 
@@ -141,6 +149,8 @@ GET /export/topic-pops-to-gcs?prefix=json/topics&per_topic_limit=100&post_state=
     "flag": "isEditorChoice"
   },
   "postsCount": 42,
+  "totalCount": 42,
+  "hasAll": false,
   "posts": [ ... ]
 }
 ```
@@ -170,7 +180,10 @@ GET /export/curated-posts-to-gcs?prefix=json/curated&limit=100&post_state=active
 
 - **篩選**：僅套用 `status`（`post_state=active` 時為 enum：`equals: published`）。
 - **`posts` 內容**：與現有 topic export / curated export 一致，沿用前端 `PostCardFields` + `PhotoFields`。
-- **`postsCount`**：回傳該條件下的 `postsCount(where: …)`。
+- **`postsCount`**：回傳該條件下的 `postsCount(where: …)`，代表符合條件的總筆數。
+- **`totalCount`**：目前與 `postsCount` 相同。
+- **`hasAll`**：`posts.length >= postsCount`。
+- **`content` trimming**：每筆 post 的 `content` 最多輸出 120 個字元；若原文超過，尾端補上 `......`。
 
 每個 JSON 結構統一為：
 
@@ -182,6 +195,8 @@ GET /export/curated-posts-to-gcs?prefix=json/curated&limit=100&post_state=active
     "label": "所有文章"
   },
   "postsCount": 42,
+  "totalCount": 42,
+  "hasAll": false,
   "posts": [ ... ]
 }
 ```

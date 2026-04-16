@@ -6,6 +6,7 @@ from google.cloud import storage
 from .config import get_settings
 from .export_topic_posts import (
     _POST_CARD_SELECTION,
+    _append_count_fields,
     _fetch_posts_in_pages,
     _hot_score,
     _hot_threshold,
@@ -13,6 +14,7 @@ from .export_topic_posts import (
     _merge_boost_first,
     _normalize_prefix,
     _pop_take_limit,
+    _prepare_posts_for_export,
     _rank_hot_posts,
     _resolve_post_status,
     _to_int,
@@ -114,15 +116,15 @@ query AllPostsBoost($take: Int!) {{
 
 
 def _all_posts_payload(generated_at: str, posts_count: int, posts: List[Dict[str, Any]]) -> Dict[str, Any]:
-    return {
+    return _append_count_fields({
         "generatedAt": generated_at,
         "collection": {
             "key": "all-posts",
             "label": "所有文章",
         },
         "postsCount": posts_count,
-        "posts": posts,
-    }
+        "posts": _prepare_posts_for_export(posts),
+    }, posts_count)
 
 
 def export_all_posts_to_gcs(

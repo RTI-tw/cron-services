@@ -285,6 +285,29 @@ def _merge_boost_first(boost_posts: List[Dict[str, Any]], ranked_posts: List[Dic
     return out
 
 
+def _trim_post_content(text: Any, limit: int = 120) -> Any:
+    if not isinstance(text, str):
+        return text
+    if len(text) <= limit:
+        return text
+    return f"{text[:limit]}......"
+
+
+def _prepare_posts_for_export(posts: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    prepared: List[Dict[str, Any]] = []
+    for post in posts:
+        row = dict(post)
+        row["content"] = _trim_post_content(row.get("content"))
+        prepared.append(row)
+    return prepared
+
+
+def _append_count_fields(payload: Dict[str, Any], total_count: int) -> Dict[str, Any]:
+    payload["totalCount"] = total_count
+    payload["hasAll"] = len(payload.get("posts") or []) >= payload.get("postsCount", 0)
+    return payload
+
+
 def _fetch_posts_in_pages(
     query: str,
     variables: Dict[str, Any],
@@ -324,12 +347,12 @@ def _fetch_posts_in_pages(
 
 
 def _topic_payload(generated_at: str, topic_row: Dict[str, Any], posts_count: int, posts: List[Dict[str, Any]]) -> Dict[str, Any]:
-    return {
+    return _append_count_fields({
         "generatedAt": generated_at,
         "topic": {"id": topic_row.get("id"), "name": topic_row.get("name"), "slug": topic_row.get("slug")},
         "postsCount": posts_count,
-        "posts": posts,
-    }
+        "posts": _prepare_posts_for_export(posts),
+    }, posts_count)
 
 
 def _upload_json(bucket: storage.Bucket, path: str, payload: Dict[str, Any]) -> None:
