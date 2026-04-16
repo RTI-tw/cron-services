@@ -67,6 +67,11 @@ _POST_CARD_SELECTION = f"""
     }}
     poll {{
       id
+      votesCount
+      participantsCount
+      totalVotes
+      totalCount
+      votersCount
     }}
     commentsCount
     reactionsCount
@@ -263,6 +268,24 @@ def _hot_score(post: Dict[str, Any]) -> int:
     return reactions * _weight_reaction() + poll_votes * _weight_poll_vote() + comments * _weight_comment()
 
 
+def _hot_score_breakdown(post: Dict[str, Any]) -> Dict[str, int]:
+    reactions = _to_int(post.get("reactionsCount"))
+    comments = _to_int(post.get("commentsCount"))
+    poll_votes = _poll_participants(post)
+    reaction_score = reactions * _weight_reaction()
+    poll_score = poll_votes * _weight_poll_vote()
+    comment_score = comments * _weight_comment()
+    return {
+        "reactionsCount": reactions,
+        "reactionScore": reaction_score,
+        "pollVotes": poll_votes,
+        "pollScore": poll_score,
+        "commentsCount": comments,
+        "commentScore": comment_score,
+        "total": reaction_score + poll_score + comment_score,
+    }
+
+
 def _created_sort_key(post: Dict[str, Any]) -> str:
     return str(post.get("createdAt") or "")
 
@@ -285,6 +308,41 @@ def _merge_boost_first(boost_posts: List[Dict[str, Any]], ranked_posts: List[Dic
     return out
 
 
+def _merge_boost_first_with_reason(
+    boost_posts: List[Dict[str, Any]],
+    ranked_posts: List[Dict[str, Any]],
+    take: int,
+    *,
+    default_reason: str,
+) -> List[Dict[str, Any]]:
+    out: List[Dict[str, Any]] = []
+    seen: Set[str] = set()
+
+    for post in boost_posts:
+        pid = str(post.get("id") or "").strip()
+        if not pid or pid in seen:
+            continue
+        row = dict(post)
+        row["rankingReason"] = "boost"
+        out.append(row)
+        seen.add(pid)
+        if len(out) >= take:
+            return out
+
+    for post in ranked_posts:
+        pid = str(post.get("id") or "").strip()
+        if not pid or pid in seen:
+            continue
+        row = dict(post)
+        row["rankingReason"] = default_reason
+        out.append(row)
+        seen.add(pid)
+        if len(out) >= take:
+            break
+
+    return out
+
+
 def _trim_post_content(text: Any, limit: int = 120) -> Any:
     if not isinstance(text, str):
         return text
@@ -298,6 +356,9 @@ def _prepare_posts_for_export(posts: List[Dict[str, Any]]) -> List[Dict[str, Any
     for post in posts:
         row = dict(post)
         row["content"] = _trim_post_content(row.get("content"))
+        breakdown = _hot_score_breakdown(row)
+        row["score"] = breakdown["total"]
+        row["scoreBreakdown"] = breakdown
         prepared.append(row)
     return prepared
 
@@ -406,7 +467,12 @@ def _build_per_topic_result(
 
     if eligible_3d:
         # 第一層：僅採用 3 天內達門檻的熱門文（再由 boost 置頂優先）
-        pop_posts = _merge_boost_first(boost_posts, eligible_3d, pop_take)
+        pop_posts = _merge_boost_first_with_reason(
+            boost_posts,
+            eligible_3d,
+            pop_take,
+            default_reason="3d-score",
+        )
         pop_count = hot_3d_count
     else:
         hot_14d_posts, hot_14d_count = _fetch_posts_in_pages(
@@ -419,11 +485,21 @@ def _build_per_topic_result(
         has_interaction_14d = any(_hot_score(p) > 0 for p in ranked_14d)
         if ranked_14d and has_interaction_14d:
             # 第二層：延長到 14 天，取積分最高的熱門文（再由 boost 置頂優先）
-            pop_posts = _merge_boost_first(boost_posts, ranked_14d, pop_take)
+            pop_posts = _merge_boost_first_with_reason(
+                boost_posts,
+                ranked_14d,
+                pop_take,
+                default_reason="14d-score",
+            )
             pop_count = hot_14d_count
         else:
             # 第三層 fallback：14 天內若沒有互動，改用最新前 10 篇遞補
-            pop_posts = _merge_boost_first(boost_posts, latest_posts[:10], pop_take)
+            pop_posts = _merge_boost_first_with_reason(
+                boost_posts,
+                latest_posts[:10],
+                pop_take,
+                default_reason="latest-fallback",
+            )
             pop_count = latest_count
 
     out = {

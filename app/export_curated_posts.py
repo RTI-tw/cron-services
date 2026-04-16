@@ -11,7 +11,7 @@ from .export_topic_posts import (
     _hot_score,
     _hot_threshold,
     _max_take_per_request,
-    _merge_boost_first,
+    _merge_boost_first_with_reason,
     _normalize_prefix,
     _pop_take_limit,
     _prepare_posts_for_export,
@@ -183,7 +183,12 @@ def _build_curated_group_result(
     eligible_3d = [p for p in ranked_3d if _hot_score(p) >= threshold]
 
     if eligible_3d:
-        pop_posts = _merge_boost_first(boost_posts, eligible_3d, pop_take)
+        pop_posts = _merge_boost_first_with_reason(
+            boost_posts,
+            eligible_3d,
+            pop_take,
+            default_reason="3d-score",
+        )
         pop_count = hot_3d_count
     else:
         hot_14d_posts, hot_14d_count = _fetch_posts_in_pages(
@@ -194,10 +199,20 @@ def _build_curated_group_result(
         ranked_14d = _rank_hot_posts(hot_14d_posts) if hot_14d_posts else []
         has_interaction_14d = any(_hot_score(p) > 0 for p in ranked_14d)
         if ranked_14d and has_interaction_14d:
-            pop_posts = _merge_boost_first(boost_posts, ranked_14d, pop_take)
+            pop_posts = _merge_boost_first_with_reason(
+                boost_posts,
+                ranked_14d,
+                pop_take,
+                default_reason="14d-score",
+            )
             pop_count = hot_14d_count
         else:
-            pop_posts = _merge_boost_first(boost_posts, latest_posts[:10], pop_take)
+            pop_posts = _merge_boost_first_with_reason(
+                boost_posts,
+                latest_posts[:10],
+                pop_take,
+                default_reason="latest-fallback",
+            )
             pop_count = latest_count
 
     out = {

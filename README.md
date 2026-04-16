@@ -70,6 +70,7 @@ GET /export/contents-to-gcs?prefix=exports/contents/dev&slug=my-content-slug
 - **`totalCount`**：目前與 `postsCount` 相同，明確表示總筆數。
 - **`hasAll`**：`posts.length >= postsCount`。
 - **`content` trimming**：每筆 post 的 `content` 最多輸出 120 個字元；若原文超過，尾端補上 `......`。
+- **debug 欄位**：每筆 post 會帶 `score` 與 `scoreBreakdown`，方便驗證熱門排序；`scoreBreakdown` 會拆出 `reactionsCount`、`reactionScore`、`pollVotes`、`pollScore`、`commentsCount`、`commentScore`、`total`。`pop` 類 JSON 另外會帶 `rankingReason`，值可能是 `boost`、`3d-score`、`14d-score`、`latest-fallback`。
 
 每個 JSON 結構統一為：
 
@@ -137,6 +138,7 @@ GET /export/topic-pops-to-gcs?prefix=json/topics&per_topic_limit=100&post_state=
 - **`totalCount`**：目前與 `postsCount` 相同。
 - **`hasAll`**：`posts.length >= postsCount`。
 - **`content` trimming**：每筆 post 的 `content` 最多輸出 120 個字元；若原文超過，尾端補上 `......`。
+- **debug 欄位**：每筆 post 會帶 `score` 與 `scoreBreakdown`，方便驗證熱門排序；`pop` 類 JSON 另外會帶 `rankingReason`。
 
 每個 JSON 結構統一為：
 
@@ -184,6 +186,7 @@ GET /export/curated-posts-to-gcs?prefix=json/curated&limit=100&post_state=active
 - **`totalCount`**：目前與 `postsCount` 相同。
 - **`hasAll`**：`posts.length >= postsCount`。
 - **`content` trimming**：每筆 post 的 `content` 最多輸出 120 個字元；若原文超過，尾端補上 `......`。
+- **debug 欄位**：每筆 post 會帶 `score` 與 `scoreBreakdown`，方便驗證熱門排序；`pop` 類 JSON 另外會帶 `rankingReason`。
 
 每個 JSON 結構統一為：
 
