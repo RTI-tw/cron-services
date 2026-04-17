@@ -279,6 +279,23 @@ Query 參數：
 GET /export/all-posts-to-gcs?prefix=json/all-posts&limit=100&post_state=active&scan_multiplier=10
 ```
 
+### `GET /export/all-posts-pops-to-gcs`
+
+只輸出全站所有文章的熱門檔案 `all-posts-pop.json`，方便與 `latest / polls` 分開排程。
+
+Query 參數：
+
+| 參數 | 說明 |
+|------|------|
+| `prefix` | 預設 `exports/all-posts` |
+| `limit` | 熱門候選池基礎設定（1–200），實際 `min(limit, GQL_POST_MAX_TAKE)` |
+| `post_state` | 預設 `active` → where 使用 `published` |
+| `scan_multiplier` | 熱門候選池倍率（只影響 `all-posts-pop.json`） |
+
+```
+GET /export/all-posts-pops-to-gcs?prefix=json/all-posts&limit=100&post_state=active&scan_multiplier=10
+```
+
 ### `GET /export/topics-daily-stats-to-gcs`
 
 各 topic 在指定時區「當日」新文章數，合併為 **`prefix` 下的 `topics-daily.json`**（無時間戳子目錄；每次執行 **覆寫**）。

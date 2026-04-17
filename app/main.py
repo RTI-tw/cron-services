@@ -5,7 +5,7 @@ from typing import Annotated, Optional
 from fastapi import Depends, FastAPI, HTTPException, Query
 
 from . import schemas
-from .export_all_posts import export_all_posts_to_gcs
+from .export_all_posts import export_all_posts_pops_to_gcs, export_all_posts_to_gcs
 from .export_contents import export_all_contents_to_gcs
 from .export_curated_posts import export_curated_posts_to_gcs
 from .export_home_sections import export_home_sections_to_gcs
@@ -398,6 +398,34 @@ async def export_all_posts(
         raise HTTPException(status_code=503, detail=_runtime_error_http_detail(e)) from e
     except Exception as e:  # noqa: BLE001
         logger.exception("export/all-posts-to-gcs failed: %s", e)
+        raise HTTPException(status_code=502, detail=str(e)) from e
+
+
+@app.get("/export/all-posts-pops-to-gcs")
+async def export_all_posts_pops(
+    body: Annotated[
+        schemas.ExportAllPostsToGcsRequest,
+        Depends(_export_all_posts_query),
+    ],
+):
+    """
+    只輸出全站所有文章的 pop JSON，方便獨立排程。
+    """
+    try:
+        return await asyncio.to_thread(
+            export_all_posts_pops_to_gcs,
+            prefix=body.prefix,
+            limit=body.limit,
+            post_state=body.post_state,
+            scan_multiplier=body.scan_multiplier,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except RuntimeError as e:
+        logger.warning("export/all-posts-pops-to-gcs RuntimeError: %s", e)
+        raise HTTPException(status_code=503, detail=_runtime_error_http_detail(e)) from e
+    except Exception as e:  # noqa: BLE001
+        logger.exception("export/all-posts-pops-to-gcs failed: %s", e)
         raise HTTPException(status_code=502, detail=str(e)) from e
 
 

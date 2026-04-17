@@ -133,6 +133,9 @@ def export_all_posts_to_gcs(
     limit: int = 10,
     post_state: str = "active",
     scan_multiplier: int = 10,
+    include_latest: bool = True,
+    include_polls: bool = True,
+    include_pop: bool = True,
 ) -> Dict[str, Any]:
     settings = get_settings()
     bucket_name = settings.gcs_bucket
@@ -226,7 +229,15 @@ def export_all_posts_to_gcs(
     bucket = storage_client.bucket(bucket_name)
 
     uploaded_paths: List[str] = []
-    for suffix in ("latest", "polls", "pop"):
+    targets: List[str] = []
+    if include_latest:
+        targets.append("latest")
+    if include_polls:
+        targets.append("polls")
+    if include_pop:
+        targets.append("pop")
+
+    for suffix in targets:
         object_path = f"{base_dir}/all-posts-{suffix}.json" if base_dir else f"all-posts-{suffix}.json"
         _upload_json(bucket, object_path, payloads[suffix])
         uploaded_paths.append(object_path)
@@ -243,3 +254,21 @@ def export_all_posts_to_gcs(
         "hot_score_threshold": threshold,
         "post_state": status_token,
     }
+
+
+def export_all_posts_pops_to_gcs(
+    *,
+    prefix: str = "exports/all-posts",
+    limit: int = 10,
+    post_state: str = "active",
+    scan_multiplier: int = 10,
+) -> Dict[str, Any]:
+    return export_all_posts_to_gcs(
+        prefix=prefix,
+        limit=limit,
+        post_state=post_state,
+        scan_multiplier=scan_multiplier,
+        include_latest=False,
+        include_polls=False,
+        include_pop=True,
+    )
