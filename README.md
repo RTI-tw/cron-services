@@ -54,6 +54,48 @@ GET /export/contents-to-gcs?prefix=exports/contents/dev&page_size=200
 GET /export/contents-to-gcs?prefix=exports/contents/dev&slug=my-content-slug
 ```
 
+### `GET /export/sidebar-topics-to-gcs`
+
+依 Sidebar 使用的 GraphQL query 匯出單一檔案 **`topics.json`**，內容 shape 與 query 回傳一致：
+
+```json
+{
+  "topics": [
+    {
+      "id": "1",
+      "name": "時事",
+      "name_zh": "時事",
+      "name_en": "Current Events",
+      "name_vi": "...",
+      "name_id": "...",
+      "name_th": "...",
+      "slug": "current-events",
+      "sortOrder": 1,
+      "description": "...",
+      "postsCount": 120,
+      "todayPostsCount": 3
+    }
+  ],
+  "topicsCount": 10
+}
+```
+
+- **GraphQL 條件**：固定使用 `where: { state: { equals: "active" } }`
+- **排序**：固定使用 `orderBy: [{ sortOrder: asc }]`
+- **輸出檔名**：`{prefix}/topics.json`
+
+Query 參數：
+
+| 參數 | 說明 |
+|------|------|
+| `prefix` | 預設 `exports/sidebar-topics` |
+
+範例：
+
+```
+GET /export/sidebar-topics-to-gcs?prefix=json/sidebar
+```
+
 ### `GET /export/home-sections-to-gcs`
 
 一次執行三支固定 GraphQL，並分別輸出到：

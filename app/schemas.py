@@ -22,6 +22,13 @@ class ExportHomeSectionsToGcsRequest(BaseModel):
     )
 
 
+class ExportSidebarTopicsToGcsRequest(BaseModel):
+    prefix: str = Field(
+        default="exports/sidebar-topics",
+        description="GCS 目錄前綴（不含時間戳）；寫入 topics.json，每次覆寫",
+    )
+
+
 class ExportTopicPostsToGcsRequest(BaseModel):
     prefix: str = Field(
         default="exports/topic-posts",
