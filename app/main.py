@@ -148,12 +148,19 @@ def _export_posts_sitemap_query(
         le=1000,
         description=schemas.ExportPostsSitemapToGcsRequest.model_fields["page_size"].description,
     ),
+    max_urls_per_file: int = Query(
+        default=50000,
+        ge=5,
+        le=50000,
+        description=schemas.ExportPostsSitemapToGcsRequest.model_fields["max_urls_per_file"].description,
+    ),
 ) -> schemas.ExportPostsSitemapToGcsRequest:
     return schemas.ExportPostsSitemapToGcsRequest(
         prefix=prefix,
         base_url=base_url,
         url_template=url_template,
         page_size=page_size,
+        max_urls_per_file=max_urls_per_file,
     )
 
 
@@ -501,6 +508,7 @@ async def export_posts_sitemap(
             base_url=body.base_url,
             url_template=body.url_template,
             page_size=body.page_size,
+            max_urls_per_file=body.max_urls_per_file,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e

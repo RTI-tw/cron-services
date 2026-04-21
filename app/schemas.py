@@ -68,6 +68,12 @@ class ExportPostsSitemapToGcsRequest(BaseModel):
         le=1000,
         description="每次 GraphQL 擷取幾筆 published posts",
     )
+    max_urls_per_file: int = Field(
+        default=50000,
+        ge=5,
+        le=50000,
+        description="每個 sitemap 檔最多包含幾個 URL；Google sitemap 上限為 50000",
+    )
 
 
 class ExportTopicPostsToGcsRequest(BaseModel):

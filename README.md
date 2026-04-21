@@ -154,7 +154,12 @@ GET /export/ads-to-gcs?prefix=json/ads&take=1
 
 ### `GET /export/posts-sitemap-to-gcs`
 
-依 `published` posts 產出 Google Search 使用的 **`sitemap.xml`**。每篇 post 會產五種語言 URL（`zh/en/vi/id/th`），並在每個 `<url>` 裡附上 `xhtml:link rel="alternate"`。
+依 `published` posts 產出 Google Search 使用的 sitemap。每篇 post 會產五種語言 URL（`zh/en/vi/id/th`），並在每個 `<url>` 裡附上 `xhtml:link rel="alternate"`。
+
+輸出會包含：
+
+- `sitemap.xml`：sitemap index，指向所有分頁 sitemap
+- `posts-sitemap-1.xml`、`posts-sitemap-2.xml`...：實際 URL 清單，每個檔案最多 `max_urls_per_file` 筆 URL
 
 > 目前 Keystone `Post` 沒有 slug 欄位，因此預設 URL template 使用 post `id`：`/{lang}/posts/{id}`。若前端實際路徑不同，請用 `url_template` 覆寫。
 
@@ -164,9 +169,10 @@ GET /export/ads-to-gcs?prefix=json/ads&take=1
 | `base_url` | 網站 base URL，例如 `https://example.com`；若不傳，讀取環境變數 `SITE_BASE_URL` |
 | `url_template` | 預設 `/{lang}/posts/{id}`，可用 `{lang}` 與 `{id}` |
 | `page_size` | 預設 `200`，每次 GraphQL 擷取幾筆 published posts |
+| `max_urls_per_file` | 預設 `50000`，每個 sitemap 檔最多幾筆 URL |
 
 ```
-GET /export/posts-sitemap-to-gcs?prefix=json/sitemaps&base_url=https://example.com&url_template=/{lang}/posts/{id}&page_size=200
+GET /export/posts-sitemap-to-gcs?prefix=json/sitemaps&base_url=https://example.com&url_template=/{lang}/posts/{id}&page_size=200&max_urls_per_file=50000
 ```
 
 ### `GET /export/home-sections-to-gcs`

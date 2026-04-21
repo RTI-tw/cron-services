@@ -1,7 +1,7 @@
 import os
 from datetime import datetime, timezone
 from html import escape
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Tuple
 from urllib.parse import quote
 
 from google.cloud import storage
@@ -53,30 +53,68 @@ def _post_url(base_url: str, url_template: str, lang: str, post: Dict[str, Any])
     return f"{base_url}{path}"
 
 
-def _build_sitemap_xml(posts: List[Dict[str, Any]], base_url: str, url_template: str) -> str:
+def _post_url_entries(post: Dict[str, Any], base_url: str, url_template: str) -> List[Tuple[str, str, Dict[str, str]]]:
+    alternates = {
+        lang: _post_url(base_url, url_template, lang, post)
+        for lang in LANGUAGES
+    }
+    lastmod = _post_lastmod(post)
+    return [(alternates[lang], lastmod, alternates) for lang in LANGUAGES]
+
+
+def _chunk_post_url_entries(
+    posts: List[Dict[str, Any]],
+    base_url: str,
+    url_template: str,
+    max_urls_per_file: int,
+) -> List[List[Tuple[str, str, Dict[str, str]]]]:
+    chunks: List[List[Tuple[str, str, Dict[str, str]]]] = []
+    current: List[Tuple[str, str, Dict[str, str]]] = []
+
+    for post in posts:
+        entries = _post_url_entries(post, base_url, url_template)
+        if current and len(current) + len(entries) > max_urls_per_file:
+            chunks.append(current)
+            current = []
+        current.extend(entries)
+
+    if current:
+        chunks.append(current)
+    return chunks
+
+
+def _build_sitemap_xml(entries: List[Tuple[str, str, Dict[str, str]]]) -> str:
     lines = [
         '<?xml version="1.0" encoding="UTF-8"?>',
         '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">',
     ]
 
-    for post in posts:
-        alternates = {
-            lang: _post_url(base_url, url_template, lang, post)
-            for lang in LANGUAGES
-        }
-        lastmod = escape(_post_lastmod(post))
-        for lang in LANGUAGES:
-            lines.append("  <url>")
-            lines.append(f"    <loc>{escape(alternates[lang])}</loc>")
-            lines.append(f"    <lastmod>{lastmod}</lastmod>")
-            for alt_lang, href in alternates.items():
-                lines.append(
-                    f'    <xhtml:link rel="alternate" hreflang="{alt_lang}" href="{escape(href)}" />'
-                )
-            lines.append(f'    <xhtml:link rel="alternate" hreflang="x-default" href="{escape(alternates["zh"])}" />')
-            lines.append("  </url>")
+    for loc, lastmod, alternates in entries:
+        lines.append("  <url>")
+        lines.append(f"    <loc>{escape(loc)}</loc>")
+        lines.append(f"    <lastmod>{escape(lastmod)}</lastmod>")
+        for alt_lang, href in alternates.items():
+            lines.append(
+                f'    <xhtml:link rel="alternate" hreflang="{alt_lang}" href="{escape(href)}" />'
+            )
+        lines.append(f'    <xhtml:link rel="alternate" hreflang="x-default" href="{escape(alternates["zh"])}" />')
+        lines.append("  </url>")
 
     lines.append("</urlset>")
+    return "\n".join(lines) + "\n"
+
+
+def _build_sitemap_index_xml(sitemap_urls: List[Tuple[str, str]]) -> str:
+    lines = [
+        '<?xml version="1.0" encoding="UTF-8"?>',
+        '<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
+    ]
+    for loc, lastmod in sitemap_urls:
+        lines.append("  <sitemap>")
+        lines.append(f"    <loc>{escape(loc)}</loc>")
+        lines.append(f"    <lastmod>{escape(lastmod)}</lastmod>")
+        lines.append("  </sitemap>")
+    lines.append("</sitemapindex>")
     return "\n".join(lines) + "\n"
 
 
@@ -108,6 +146,7 @@ def export_posts_sitemap_to_gcs(
     base_url: str = "",
     url_template: str = "/{lang}/posts/{id}",
     page_size: int = 200,
+    max_urls_per_file: int = 50000,
 ) -> Dict[str, Any]:
     settings = get_settings()
     bucket_name = settings.gcs_bucket
@@ -115,26 +154,56 @@ def export_posts_sitemap_to_gcs(
         raise RuntimeError("GCS_BUCKET 環境變數未設定")
     if page_size <= 0:
         raise ValueError("page_size 必須大於 0")
+    if max_urls_per_file <= 0 or max_urls_per_file > 50000:
+        raise ValueError("max_urls_per_file 必須介於 1 到 50000")
+    if max_urls_per_file < len(LANGUAGES):
+        raise ValueError(f"max_urls_per_file 必須至少為 {len(LANGUAGES)}，才能容納一篇 post 的五語 URL")
 
     normalized_base_url = _normalize_base_url(base_url)
     posts, total_count = _fetch_published_posts(page_size)
-    sitemap_xml = _build_sitemap_xml(posts, normalized_base_url, url_template)
+    chunks = _chunk_post_url_entries(
+        posts,
+        normalized_base_url,
+        url_template,
+        max_urls_per_file,
+    )
 
     base_dir = _normalize_prefix(prefix)
-    object_path = f"{base_dir}/sitemap.xml" if base_dir else "sitemap.xml"
-
     storage_client = storage.Client()
     bucket = storage_client.bucket(bucket_name)
-    blob = bucket.blob(object_path)
-    blob.upload_from_string(sitemap_xml, content_type="application/xml; charset=utf-8")
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    uploaded_paths: List[str] = []
+    sitemap_index_entries: List[Tuple[str, str]] = []
+
+    for idx, chunk in enumerate(chunks, start=1):
+        filename = f"posts-sitemap-{idx}.xml"
+        object_path = f"{base_dir}/{filename}" if base_dir else filename
+        sitemap_xml = _build_sitemap_xml(chunk)
+        bucket.blob(object_path).upload_from_string(
+            sitemap_xml,
+            content_type="application/xml; charset=utf-8",
+        )
+        uploaded_paths.append(object_path)
+        sitemap_index_entries.append((f"{normalized_base_url}/{object_path}", now_iso))
+
+    index_path = f"{base_dir}/sitemap.xml" if base_dir else "sitemap.xml"
+    sitemap_index_xml = _build_sitemap_index_xml(sitemap_index_entries)
+    bucket.blob(index_path).upload_from_string(
+        sitemap_index_xml,
+        content_type="application/xml; charset=utf-8",
+    )
+    uploaded_paths.insert(0, index_path)
 
     return {
         "bucket": bucket_name,
         "prefix": base_dir,
-        "files": [object_path],
+        "files": uploaded_paths,
         "posts_count": len(posts),
         "posts_total_count": total_count,
         "url_count": len(posts) * len(LANGUAGES),
+        "sitemap_files_count": len(chunks),
+        "max_urls_per_file": max_urls_per_file,
         "base_url": normalized_base_url,
         "url_template": url_template,
     }
