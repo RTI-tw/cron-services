@@ -15,6 +15,11 @@ query GetFooterContents($orderBy: [ContentOrderByInput!]! = [{ sortOrder: asc }]
     id
     slug
     title
+    title_zh
+    title_en
+    title_vi
+    title_id
+    title_th
     order: sortOrder
     status
   }
@@ -30,6 +35,11 @@ query GetFooterContents($orderBy: [ContentOrderByInput!]! = [{ sortOrder: asc }]
     id
     slug: identifier
     title
+    title_zh
+    title_en
+    title_vi
+    title_id
+    title_th
     order: sortOrder
     status
   }
@@ -45,6 +55,11 @@ query GetFooterContents($orderBy: [ContentOrderByInput!]! = [{ order: asc }]) {
     id
     slug: identifier
     title
+    title_zh
+    title_en
+    title_vi
+    title_id
+    title_th
     order
     status
   }
