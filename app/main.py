@@ -23,6 +23,7 @@ from .export_home_sections import (
     export_home_pop_polls_to_gcs,
     export_home_sections_to_gcs,
 )
+from .export_posts_sitemap import export_posts_sitemap_to_gcs
 from .export_sidebar_topics import export_sidebar_topics_to_gcs
 from .export_topic_posts import export_topic_pops_to_gcs, export_topic_posts_to_gcs
 from .export_topics_daily_stats import export_topics_daily_stats_to_gcs
@@ -126,6 +127,34 @@ def _export_ads_query(
     ),
 ) -> schemas.ExportAdsToGcsRequest:
     return schemas.ExportAdsToGcsRequest(prefix=prefix, take=take)
+
+
+def _export_posts_sitemap_query(
+    prefix: str = Query(
+        default="exports/sitemaps",
+        description=schemas.ExportPostsSitemapToGcsRequest.model_fields["prefix"].description,
+    ),
+    base_url: str = Query(
+        default="",
+        description=schemas.ExportPostsSitemapToGcsRequest.model_fields["base_url"].description,
+    ),
+    url_template: str = Query(
+        default="/{lang}/posts/{id}",
+        description=schemas.ExportPostsSitemapToGcsRequest.model_fields["url_template"].description,
+    ),
+    page_size: int = Query(
+        default=200,
+        ge=1,
+        le=1000,
+        description=schemas.ExportPostsSitemapToGcsRequest.model_fields["page_size"].description,
+    ),
+) -> schemas.ExportPostsSitemapToGcsRequest:
+    return schemas.ExportPostsSitemapToGcsRequest(
+        prefix=prefix,
+        base_url=base_url,
+        url_template=url_template,
+        page_size=page_size,
+    )
 
 
 def _export_topics_daily_stats_query(
@@ -452,6 +481,34 @@ async def export_ads(
         raise HTTPException(status_code=503, detail=_runtime_error_http_detail(e)) from e
     except Exception as e:  # noqa: BLE001
         logger.exception("export/ads-to-gcs failed: %s", e)
+        raise HTTPException(status_code=502, detail=str(e)) from e
+
+
+@app.get("/export/posts-sitemap-to-gcs")
+async def export_posts_sitemap(
+    body: Annotated[
+        schemas.ExportPostsSitemapToGcsRequest,
+        Depends(_export_posts_sitemap_query),
+    ],
+):
+    """
+    依 published posts 產出 Google Search sitemap.xml 並上傳 GCS。
+    """
+    try:
+        return await asyncio.to_thread(
+            export_posts_sitemap_to_gcs,
+            prefix=body.prefix,
+            base_url=body.base_url,
+            url_template=body.url_template,
+            page_size=body.page_size,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except RuntimeError as e:
+        logger.warning("export/posts-sitemap-to-gcs RuntimeError: %s", e)
+        raise HTTPException(status_code=503, detail=_runtime_error_http_detail(e)) from e
+    except Exception as e:  # noqa: BLE001
+        logger.exception("export/posts-sitemap-to-gcs failed: %s", e)
         raise HTTPException(status_code=502, detail=str(e)) from e
 
 

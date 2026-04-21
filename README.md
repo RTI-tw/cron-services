@@ -152,6 +152,23 @@ GET /export/forbidden-keywords-to-gcs?prefix=json/forbidden-keywords
 GET /export/ads-to-gcs?prefix=json/ads&take=1
 ```
 
+### `GET /export/posts-sitemap-to-gcs`
+
+依 `published` posts 產出 Google Search 使用的 **`sitemap.xml`**。每篇 post 會產五種語言 URL（`zh/en/vi/id/th`），並在每個 `<url>` 裡附上 `xhtml:link rel="alternate"`。
+
+> 目前 Keystone `Post` 沒有 slug 欄位，因此預設 URL template 使用 post `id`：`/{lang}/posts/{id}`。若前端實際路徑不同，請用 `url_template` 覆寫。
+
+| 參數 | 說明 |
+|------|------|
+| `prefix` | 預設 `exports/sitemaps` |
+| `base_url` | 網站 base URL，例如 `https://example.com`；若不傳，讀取環境變數 `SITE_BASE_URL` |
+| `url_template` | 預設 `/{lang}/posts/{id}`，可用 `{lang}` 與 `{id}` |
+| `page_size` | 預設 `200`，每次 GraphQL 擷取幾筆 published posts |
+
+```
+GET /export/posts-sitemap-to-gcs?prefix=json/sitemaps&base_url=https://example.com&url_template=/{lang}/posts/{id}&page_size=200
+```
+
 ### `GET /export/home-sections-to-gcs`
 
 一次執行三支固定 GraphQL，並分別輸出到：

@@ -49,6 +49,27 @@ class ExportAdsToGcsRequest(BaseModel):
     )
 
 
+class ExportPostsSitemapToGcsRequest(BaseModel):
+    prefix: str = Field(
+        default="exports/sitemaps",
+        description="GCS 目錄前綴（不含時間戳）；寫入 sitemap.xml，每次覆寫",
+    )
+    base_url: str = Field(
+        default="",
+        description="網站 base URL；若未提供則讀取 SITE_BASE_URL 環境變數",
+    )
+    url_template: str = Field(
+        default="/{lang}/posts/{id}",
+        description="Post URL path template，可用 {lang} 與 {id}",
+    )
+    page_size: int = Field(
+        default=200,
+        ge=1,
+        le=1000,
+        description="每次 GraphQL 擷取幾筆 published posts",
+    )
+
+
 class ExportTopicPostsToGcsRequest(BaseModel):
     prefix: str = Field(
         default="exports/topic-posts",
