@@ -29,6 +29,21 @@ query PublishedPostsForSitemap($skip: Int!, $take: Int!) {
 }
 """
 
+QUERY_PUBLISHED_CONTENTS_FOR_SITEMAP = """
+query PublishedContentsForSitemap($skip: Int!, $take: Int!) {
+  contents(
+    where: { status: { equals: published } }
+    orderBy: [{ updatedAt: desc }]
+    skip: $skip
+    take: $take
+  ) {
+    identifier
+    updatedAt
+  }
+  contentsCount(where: { status: { equals: published } })
+}
+"""
+
 
 def _normalize_base_url(base_url: str) -> str:
     value = (base_url or os.getenv("SITE_BASE_URL") or "").strip()
@@ -53,6 +68,17 @@ def _post_url(base_url: str, url_template: str, lang: str, post: Dict[str, Any])
     return f"{base_url}{path}"
 
 
+def _content_url(base_url: str, content_url_template: str, lang: str, content: Dict[str, Any]) -> str:
+    identifier = quote(str(content.get("identifier") or "").strip(), safe="")
+    path = (content_url_template or "/{lang}/{identifier}").format(
+        lang=lang,
+        identifier=identifier,
+    )
+    if not path.startswith("/"):
+        path = f"/{path}"
+    return f"{base_url}{path}"
+
+
 def _post_url_entries(post: Dict[str, Any], base_url: str, url_template: str) -> List[Tuple[str, str, Dict[str, str]]]:
     alternates = {
         lang: _post_url(base_url, url_template, lang, post)
@@ -62,17 +88,27 @@ def _post_url_entries(post: Dict[str, Any], base_url: str, url_template: str) ->
     return [(alternates[lang], lastmod, alternates) for lang in LANGUAGES]
 
 
-def _chunk_post_url_entries(
-    posts: List[Dict[str, Any]],
+def _content_url_entries(
+    content: Dict[str, Any],
     base_url: str,
-    url_template: str,
+    content_url_template: str,
+) -> List[Tuple[str, str, Dict[str, str]]]:
+    alternates = {
+        lang: _content_url(base_url, content_url_template, lang, content)
+        for lang in LANGUAGES
+    }
+    lastmod = str(content.get("updatedAt") or datetime.now(timezone.utc).isoformat())
+    return [(alternates[lang], lastmod, alternates) for lang in LANGUAGES]
+
+
+def _chunk_sitemap_entries(
+    entries_by_item: List[List[Tuple[str, str, Dict[str, str]]]],
     max_urls_per_file: int,
 ) -> List[List[Tuple[str, str, Dict[str, str]]]]:
     chunks: List[List[Tuple[str, str, Dict[str, str]]]] = []
     current: List[Tuple[str, str, Dict[str, str]]] = []
 
-    for post in posts:
-        entries = _post_url_entries(post, base_url, url_template)
+    for entries in entries_by_item:
         if current and len(current) + len(entries) > max_urls_per_file:
             chunks.append(current)
             current = []
@@ -81,6 +117,28 @@ def _chunk_post_url_entries(
     if current:
         chunks.append(current)
     return chunks
+
+
+def _build_post_entries_by_item(
+    posts: List[Dict[str, Any]],
+    base_url: str,
+    url_template: str,
+) -> List[List[Tuple[str, str, Dict[str, str]]]]:
+    return [
+        _post_url_entries(post, base_url, url_template)
+        for post in posts
+    ]
+
+
+def _build_content_entries_by_item(
+    contents: List[Dict[str, Any]],
+    base_url: str,
+    content_url_template: str,
+) -> List[List[Tuple[str, str, Dict[str, str]]]]:
+    return [
+        _content_url_entries(content, base_url, content_url_template)
+        for content in contents
+    ]
 
 
 def _build_sitemap_xml(entries: List[Tuple[str, str, Dict[str, str]]]) -> str:
@@ -140,11 +198,36 @@ def _fetch_published_posts(page_size: int) -> tuple[List[Dict[str, Any]], int]:
     return posts, total_count
 
 
+def _fetch_published_contents(page_size: int) -> tuple[List[Dict[str, Any]], int]:
+    contents: List[Dict[str, Any]] = []
+    total_count = 0
+    skip = 0
+
+    while True:
+        data = execute_gql(
+            QUERY_PUBLISHED_CONTENTS_FOR_SITEMAP,
+            {"skip": skip, "take": page_size},
+        )
+        page_contents = data.get("contents") or []
+        total_count = _to_int(data.get("contentsCount"))
+        if not page_contents:
+            break
+        contents.extend(
+            c for c in page_contents if str(c.get("identifier") or "").strip()
+        )
+        skip += len(page_contents)
+        if len(page_contents) < page_size:
+            break
+
+    return contents, total_count
+
+
 def export_posts_sitemap_to_gcs(
     *,
     prefix: str = "exports/sitemaps",
     base_url: str = "",
     url_template: str = "/{lang}/posts/{id}",
+    content_url_template: str = "/{lang}/{identifier}",
     page_size: int = 200,
     max_urls_per_file: int = 50000,
 ) -> Dict[str, Any]:
@@ -161,10 +244,13 @@ def export_posts_sitemap_to_gcs(
 
     normalized_base_url = _normalize_base_url(base_url)
     posts, total_count = _fetch_published_posts(page_size)
-    chunks = _chunk_post_url_entries(
-        posts,
-        normalized_base_url,
-        url_template,
+    contents, contents_total_count = _fetch_published_contents(page_size)
+    post_chunks = _chunk_sitemap_entries(
+        _build_post_entries_by_item(posts, normalized_base_url, url_template),
+        max_urls_per_file,
+    )
+    content_chunks = _chunk_sitemap_entries(
+        _build_content_entries_by_item(contents, normalized_base_url, content_url_template),
         max_urls_per_file,
     )
 
@@ -176,16 +262,20 @@ def export_posts_sitemap_to_gcs(
     uploaded_paths: List[str] = []
     sitemap_index_entries: List[Tuple[str, str]] = []
 
-    for idx, chunk in enumerate(chunks, start=1):
-        filename = f"posts-sitemap-{idx}.xml"
-        object_path = f"{base_dir}/{filename}" if base_dir else filename
-        sitemap_xml = _build_sitemap_xml(chunk)
-        bucket.blob(object_path).upload_from_string(
-            sitemap_xml,
-            content_type="application/xml; charset=utf-8",
-        )
-        uploaded_paths.append(object_path)
-        sitemap_index_entries.append((f"{normalized_base_url}/{object_path}", now_iso))
+    def _upload_sitemap_chunks(kind: str, chunks: List[List[Tuple[str, str, Dict[str, str]]]]) -> None:
+        for idx, chunk in enumerate(chunks, start=1):
+            filename = f"{kind}-sitemap-{idx}.xml"
+            object_path = f"{base_dir}/{filename}" if base_dir else filename
+            sitemap_xml = _build_sitemap_xml(chunk)
+            bucket.blob(object_path).upload_from_string(
+                sitemap_xml,
+                content_type="application/xml; charset=utf-8",
+            )
+            uploaded_paths.append(object_path)
+            sitemap_index_entries.append((f"{normalized_base_url}/{object_path}", now_iso))
+
+    _upload_sitemap_chunks("posts", post_chunks)
+    _upload_sitemap_chunks("contents", content_chunks)
 
     index_path = f"{base_dir}/sitemap.xml" if base_dir else "sitemap.xml"
     sitemap_index_xml = _build_sitemap_index_xml(sitemap_index_entries)
@@ -201,9 +291,14 @@ def export_posts_sitemap_to_gcs(
         "files": uploaded_paths,
         "posts_count": len(posts),
         "posts_total_count": total_count,
-        "url_count": len(posts) * len(LANGUAGES),
-        "sitemap_files_count": len(chunks),
+        "contents_count": len(contents),
+        "contents_total_count": contents_total_count,
+        "url_count": (len(posts) + len(contents)) * len(LANGUAGES),
+        "sitemap_files_count": len(post_chunks) + len(content_chunks),
+        "post_sitemap_files_count": len(post_chunks),
+        "content_sitemap_files_count": len(content_chunks),
         "max_urls_per_file": max_urls_per_file,
         "base_url": normalized_base_url,
         "url_template": url_template,
+        "content_url_template": content_url_template,
     }

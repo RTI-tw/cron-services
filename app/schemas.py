@@ -62,6 +62,10 @@ class ExportPostsSitemapToGcsRequest(BaseModel):
         default="/{lang}/posts/{id}",
         description="Post URL path template，可用 {lang} 與 {id}",
     )
+    content_url_template: str = Field(
+        default="/{lang}/{identifier}",
+        description="Content URL path template，可用 {lang} 與 {identifier}",
+    )
     page_size: int = Field(
         default=200,
         ge=1,

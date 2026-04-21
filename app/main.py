@@ -142,6 +142,10 @@ def _export_posts_sitemap_query(
         default="/{lang}/posts/{id}",
         description=schemas.ExportPostsSitemapToGcsRequest.model_fields["url_template"].description,
     ),
+    content_url_template: str = Query(
+        default="/{lang}/{identifier}",
+        description=schemas.ExportPostsSitemapToGcsRequest.model_fields["content_url_template"].description,
+    ),
     page_size: int = Query(
         default=200,
         ge=1,
@@ -159,6 +163,7 @@ def _export_posts_sitemap_query(
         prefix=prefix,
         base_url=base_url,
         url_template=url_template,
+        content_url_template=content_url_template,
         page_size=page_size,
         max_urls_per_file=max_urls_per_file,
     )
@@ -507,6 +512,7 @@ async def export_posts_sitemap(
             prefix=body.prefix,
             base_url=body.base_url,
             url_template=body.url_template,
+            content_url_template=body.content_url_template,
             page_size=body.page_size,
             max_urls_per_file=body.max_urls_per_file,
         )
