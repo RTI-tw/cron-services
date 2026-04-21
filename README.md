@@ -116,6 +116,30 @@ Query 參數：
 GET /export/home-sections-to-gcs?prefix=exports/home-sections/dev
 ```
 
+### `GET /export/home-editor-choices-to-gcs`
+
+只輸出首頁四格編輯精選 **`editor-choices.json`**，方便獨立設定 scheduler。
+
+| 參數 | 說明 |
+|------|------|
+| `prefix` | 預設 `exports/home-sections` |
+
+```
+GET /export/home-editor-choices-to-gcs?prefix=exports/home-sections/dev
+```
+
+### `GET /export/home-pop-polls-to-gcs`
+
+只輸出首頁熱門投票 **`pop-polls.json`**，方便設定每 10 分鐘更新。
+
+| 參數 | 說明 |
+|------|------|
+| `prefix` | 預設 `exports/home-sections` |
+
+```
+GET /export/home-pop-polls-to-gcs?prefix=exports/home-sections/dev
+```
+
 ### `GET /export/topic-posts-to-gcs`
 
 與前端論壇 GQL 對齊：每個有 `slug` 的 topic 寫入 `latest` / `polls` 兩種檔案（`prefix/` 下），每次執行覆寫。
@@ -232,6 +256,34 @@ Query 參數：
 GET /export/curated-posts-to-gcs?prefix=json/curated&limit=100&post_state=active&scan_multiplier=10
 ```
 
+### `GET /export/curated-posts-latest-polls-to-gcs`
+
+只輸出 curated posts 的 `latest / polls` 四個檔案：
+
+- `editor-choice-latest.json`
+- `editor-choice-polls.json`
+- `life-guide-latest.json`
+- `life-guide-polls.json`
+
+Query 參數同 `/export/curated-posts-to-gcs`。
+
+```
+GET /export/curated-posts-latest-polls-to-gcs?prefix=json/curated&limit=100&post_state=active&scan_multiplier=10
+```
+
+### `GET /export/curated-posts-pops-to-gcs`
+
+只輸出 curated posts 的 `pop` 兩個檔案：
+
+- `editor-choice-pop.json`
+- `life-guide-pop.json`
+
+Query 參數同 `/export/curated-posts-to-gcs`。
+
+```
+GET /export/curated-posts-pops-to-gcs?prefix=json/curated&limit=100&post_state=active&scan_multiplier=10
+```
+
 ### `GET /export/all-posts-to-gcs`
 
 針對全站所有 `posts` 產出三種 JSON：
@@ -294,6 +346,19 @@ Query 參數：
 
 ```
 GET /export/all-posts-pops-to-gcs?prefix=json/all-posts&limit=100&post_state=active&scan_multiplier=10
+```
+
+### `GET /export/all-posts-latest-polls-to-gcs`
+
+只輸出全站所有文章的 `latest / polls` 兩個檔案：
+
+- `all-posts-latest.json`
+- `all-posts-polls.json`
+
+Query 參數同 `/export/all-posts-to-gcs`。
+
+```
+GET /export/all-posts-latest-polls-to-gcs?prefix=json/all-posts&limit=100&post_state=active&scan_multiplier=10
 ```
 
 ### `GET /export/topics-daily-stats-to-gcs`

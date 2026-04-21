@@ -5,10 +5,22 @@ from typing import Annotated, Optional
 from fastapi import Depends, FastAPI, HTTPException, Query
 
 from . import schemas
-from .export_all_posts import export_all_posts_pops_to_gcs, export_all_posts_to_gcs
+from .export_all_posts import (
+    export_all_posts_latest_polls_to_gcs,
+    export_all_posts_pops_to_gcs,
+    export_all_posts_to_gcs,
+)
 from .export_contents import export_all_contents_to_gcs
-from .export_curated_posts import export_curated_posts_to_gcs
-from .export_home_sections import export_home_sections_to_gcs
+from .export_curated_posts import (
+    export_curated_posts_latest_polls_to_gcs,
+    export_curated_posts_pops_to_gcs,
+    export_curated_posts_to_gcs,
+)
+from .export_home_sections import (
+    export_home_editor_choices_to_gcs,
+    export_home_pop_polls_to_gcs,
+    export_home_sections_to_gcs,
+)
 from .export_sidebar_topics import export_sidebar_topics_to_gcs
 from .export_topic_posts import export_topic_pops_to_gcs, export_topic_posts_to_gcs
 from .export_topics_daily_stats import export_topics_daily_stats_to_gcs
@@ -291,6 +303,56 @@ async def export_home_sections(
         raise HTTPException(status_code=502, detail=str(e)) from e
 
 
+@app.get("/export/home-editor-choices-to-gcs")
+async def export_home_editor_choices(
+    body: Annotated[
+        schemas.ExportHomeSectionsToGcsRequest,
+        Depends(_export_home_sections_query),
+    ],
+):
+    """
+    只輸出首頁四格編輯精選 editor-choices.json，方便獨立排程。
+    """
+    try:
+        return await asyncio.to_thread(
+            export_home_editor_choices_to_gcs,
+            prefix=body.prefix,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except RuntimeError as e:
+        logger.warning("export/home-editor-choices-to-gcs RuntimeError: %s", e)
+        raise HTTPException(status_code=503, detail=_runtime_error_http_detail(e)) from e
+    except Exception as e:  # noqa: BLE001
+        logger.exception("export/home-editor-choices-to-gcs failed: %s", e)
+        raise HTTPException(status_code=502, detail=str(e)) from e
+
+
+@app.get("/export/home-pop-polls-to-gcs")
+async def export_home_pop_polls(
+    body: Annotated[
+        schemas.ExportHomeSectionsToGcsRequest,
+        Depends(_export_home_sections_query),
+    ],
+):
+    """
+    只輸出首頁熱門投票 pop-polls.json，方便獨立排程。
+    """
+    try:
+        return await asyncio.to_thread(
+            export_home_pop_polls_to_gcs,
+            prefix=body.prefix,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except RuntimeError as e:
+        logger.warning("export/home-pop-polls-to-gcs RuntimeError: %s", e)
+        raise HTTPException(status_code=503, detail=_runtime_error_http_detail(e)) from e
+    except Exception as e:  # noqa: BLE001
+        logger.exception("export/home-pop-polls-to-gcs failed: %s", e)
+        raise HTTPException(status_code=502, detail=str(e)) from e
+
+
 @app.get("/export/sidebar-topics-to-gcs")
 async def export_sidebar_topics(
     body: Annotated[
@@ -373,6 +435,62 @@ async def export_curated_posts(
         raise HTTPException(status_code=502, detail=str(e)) from e
 
 
+@app.get("/export/curated-posts-latest-polls-to-gcs")
+async def export_curated_posts_latest_polls(
+    body: Annotated[
+        schemas.ExportCuratedPostsToGcsRequest,
+        Depends(_export_curated_posts_query),
+    ],
+):
+    """
+    只輸出 curated posts 的 latest / polls JSON，方便與熱門分開排程。
+    """
+    try:
+        return await asyncio.to_thread(
+            export_curated_posts_latest_polls_to_gcs,
+            prefix=body.prefix,
+            limit=body.limit,
+            post_state=body.post_state,
+            scan_multiplier=body.scan_multiplier,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except RuntimeError as e:
+        logger.warning("export/curated-posts-latest-polls-to-gcs RuntimeError: %s", e)
+        raise HTTPException(status_code=503, detail=_runtime_error_http_detail(e)) from e
+    except Exception as e:  # noqa: BLE001
+        logger.exception("export/curated-posts-latest-polls-to-gcs failed: %s", e)
+        raise HTTPException(status_code=502, detail=str(e)) from e
+
+
+@app.get("/export/curated-posts-pops-to-gcs")
+async def export_curated_posts_pops(
+    body: Annotated[
+        schemas.ExportCuratedPostsToGcsRequest,
+        Depends(_export_curated_posts_query),
+    ],
+):
+    """
+    只輸出 curated posts 的 pop JSON，方便獨立排程。
+    """
+    try:
+        return await asyncio.to_thread(
+            export_curated_posts_pops_to_gcs,
+            prefix=body.prefix,
+            limit=body.limit,
+            post_state=body.post_state,
+            scan_multiplier=body.scan_multiplier,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except RuntimeError as e:
+        logger.warning("export/curated-posts-pops-to-gcs RuntimeError: %s", e)
+        raise HTTPException(status_code=503, detail=_runtime_error_http_detail(e)) from e
+    except Exception as e:  # noqa: BLE001
+        logger.exception("export/curated-posts-pops-to-gcs failed: %s", e)
+        raise HTTPException(status_code=502, detail=str(e)) from e
+
+
 @app.get("/export/all-posts-to-gcs")
 async def export_all_posts(
     body: Annotated[
@@ -426,6 +544,34 @@ async def export_all_posts_pops(
         raise HTTPException(status_code=503, detail=_runtime_error_http_detail(e)) from e
     except Exception as e:  # noqa: BLE001
         logger.exception("export/all-posts-pops-to-gcs failed: %s", e)
+        raise HTTPException(status_code=502, detail=str(e)) from e
+
+
+@app.get("/export/all-posts-latest-polls-to-gcs")
+async def export_all_posts_latest_polls(
+    body: Annotated[
+        schemas.ExportAllPostsToGcsRequest,
+        Depends(_export_all_posts_query),
+    ],
+):
+    """
+    只輸出全站所有文章的 latest / polls JSON，方便與熱門分開排程。
+    """
+    try:
+        return await asyncio.to_thread(
+            export_all_posts_latest_polls_to_gcs,
+            prefix=body.prefix,
+            limit=body.limit,
+            post_state=body.post_state,
+            scan_multiplier=body.scan_multiplier,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except RuntimeError as e:
+        logger.warning("export/all-posts-latest-polls-to-gcs RuntimeError: %s", e)
+        raise HTTPException(status_code=503, detail=_runtime_error_http_detail(e)) from e
+    except Exception as e:  # noqa: BLE001
+        logger.exception("export/all-posts-latest-polls-to-gcs failed: %s", e)
         raise HTTPException(status_code=502, detail=str(e)) from e
 
 

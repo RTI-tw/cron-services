@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from google.cloud import storage
 
@@ -166,6 +166,62 @@ def _execute_first_supported_query(
     raise RuntimeError("Footer query 設定錯誤：未提供 query")
 
 
+def _upload_home_payloads(
+    *,
+    prefix: str,
+    payloads: Dict[str, Dict[str, Any]],
+) -> List[str]:
+    settings = get_settings()
+    bucket_name = settings.gcs_bucket
+    if not bucket_name:
+        raise RuntimeError("GCS_BUCKET 環境變數未設定")
+
+    base_dir = _normalize_prefix(prefix)
+    storage_client = storage.Client()
+    bucket = storage_client.bucket(bucket_name)
+
+    uploaded_paths: List[str] = []
+    for filename, payload in payloads.items():
+        object_path = f"{base_dir}/{filename}" if base_dir else filename
+        _upload_json(bucket, object_path, payload)
+        uploaded_paths.append(object_path)
+    return uploaded_paths
+
+
+def _build_home_payloads(*, include: Set[str]) -> Tuple[Dict[str, Dict[str, Any]], Dict[str, Any]]:
+    now_iso = datetime.now(timezone.utc).isoformat()
+    payloads: Dict[str, Dict[str, Any]] = {}
+    meta: Dict[str, Any] = {"generated_at": now_iso}
+
+    if "footer" in include:
+        footer_data, footer_query_variant = _execute_first_supported_query(_FOOTER_QUERY_VARIANTS)
+        payloads["footer.json"] = footer_data
+        meta["footer_query_variant"] = footer_query_variant
+
+    if "editor-choices" in include:
+        editor_choices_data = execute_gql(
+            _EDITOR_CHOICES_QUERY,
+            {"orderBy": [{"sortOrder": "asc"}], "take": 4, "skip": 0},
+        )
+        payloads["editor-choices.json"] = editor_choices_data
+        meta["editor_choices_take"] = 4
+
+    if "pop-polls" in include:
+        pop_polls_data = execute_gql(
+            _POP_POLLS_QUERY,
+            {
+                "take": 1,
+                "skip": 0,
+                "where": {"expiresAt": {"gt": now_iso}},
+                "orderBy": [{"totalVotes": "desc"}],
+            },
+        )
+        payloads["pop-polls.json"] = pop_polls_data
+        meta["pop_polls_take"] = 1
+
+    return payloads, meta
+
+
 def export_home_sections_to_gcs(
     *,
     prefix: str = "exports/home-sections",
@@ -175,45 +231,43 @@ def export_home_sections_to_gcs(
     if not bucket_name:
         raise RuntimeError("GCS_BUCKET 環境變數未設定")
 
-    now_iso = datetime.now(timezone.utc).isoformat()
-
-    footer_data, footer_query_variant = _execute_first_supported_query(_FOOTER_QUERY_VARIANTS)
-    editor_choices_data = execute_gql(
-        _EDITOR_CHOICES_QUERY,
-        {"orderBy": [{"sortOrder": "asc"}], "take": 4, "skip": 0},
-    )
-    pop_polls_data = execute_gql(
-        _POP_POLLS_QUERY,
-        {
-            "take": 1,
-            "skip": 0,
-            "where": {"expiresAt": {"gt": now_iso}},
-            "orderBy": [{"totalVotes": "desc"}],
-        },
-    )
-
     base_dir = _normalize_prefix(prefix)
-    storage_client = storage.Client()
-    bucket = storage_client.bucket(bucket_name)
-
-    payloads = {
-        "footer.json": footer_data,
-        "editor-choices.json": editor_choices_data,
-        "pop-polls.json": pop_polls_data,
-    }
-
-    uploaded_paths: List[str] = []
-    for filename, payload in payloads.items():
-        object_path = f"{base_dir}/{filename}" if base_dir else filename
-        _upload_json(bucket, object_path, payload)
-        uploaded_paths.append(object_path)
+    payloads, meta = _build_home_payloads(
+        include={"footer", "editor-choices", "pop-polls"},
+    )
+    uploaded_paths = _upload_home_payloads(prefix=prefix, payloads=payloads)
 
     return {
         "bucket": bucket_name,
         "prefix": base_dir,
         "files": uploaded_paths,
-        "generated_at": now_iso,
-        "editor_choices_take": 4,
-        "pop_polls_take": 1,
-        "footer_query_variant": footer_query_variant,
+        **meta,
+    }
+
+
+def export_home_editor_choices_to_gcs(
+    *,
+    prefix: str = "exports/home-sections",
+) -> Dict[str, Any]:
+    payloads, meta = _build_home_payloads(include={"editor-choices"})
+    uploaded_paths = _upload_home_payloads(prefix=prefix, payloads=payloads)
+    return {
+        "bucket": get_settings().gcs_bucket,
+        "prefix": _normalize_prefix(prefix),
+        "files": uploaded_paths,
+        **meta,
+    }
+
+
+def export_home_pop_polls_to_gcs(
+    *,
+    prefix: str = "exports/home-sections",
+) -> Dict[str, Any]:
+    payloads, meta = _build_home_payloads(include={"pop-polls"})
+    uploaded_paths = _upload_home_payloads(prefix=prefix, payloads=payloads)
+    return {
+        "bucket": get_settings().gcs_bucket,
+        "prefix": _normalize_prefix(prefix),
+        "files": uploaded_paths,
+        **meta,
     }

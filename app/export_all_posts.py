@@ -272,3 +272,21 @@ def export_all_posts_pops_to_gcs(
         include_polls=False,
         include_pop=True,
     )
+
+
+def export_all_posts_latest_polls_to_gcs(
+    *,
+    prefix: str = "exports/all-posts",
+    limit: int = 10,
+    post_state: str = "active",
+    scan_multiplier: int = 10,
+) -> Dict[str, Any]:
+    return export_all_posts_to_gcs(
+        prefix=prefix,
+        limit=limit,
+        post_state=post_state,
+        scan_multiplier=scan_multiplier,
+        include_latest=True,
+        include_polls=True,
+        include_pop=False,
+    )
