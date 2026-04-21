@@ -6,29 +6,35 @@ from google.cloud import storage
 from .config import get_settings
 from .keystone_gql import execute_gql
 
-QUERY_CONTENTS = """
-query ListContents($skip: Int!, $take: Int!) {
-  contents(skip: $skip, take: $take) {
-    id
-    identifier
-    content
-    language
-    content_zh
-    content_en
-    content_vi
-    content_th
-    content_id
-    createdAt
-    updatedAt
-  }
+_PHOTO_FIELDS = """
+id
+name
+altText
+urlOriginal
+resized {
+  original
+  w480
+  w800
+  w1200
+}
+resizedWebp {
+  original
+  w480
+  w800
+  w1200
 }
 """
 
-QUERY_CONTENT_BY_IDENTIFIER = """
-query GetContentByIdentifier($identifier: String!) {
-  content(where: { identifier: { equals: $identifier } }) {
+_CONTENT_SELECTION = f"""
     id
     identifier
+    status
+    title
+    title_zh
+    title_en
+    title_vi
+    title_id
+    title_th
     content
     language
     content_zh
@@ -36,10 +42,27 @@ query GetContentByIdentifier($identifier: String!) {
     content_vi
     content_th
     content_id
+    photos(orderBy: {{ sortOrder: asc }}) {{
+{_PHOTO_FIELDS}
+    }}
     createdAt
     updatedAt
-  }
-}
+"""
+
+QUERY_CONTENTS = f"""
+query ListContents($skip: Int!, $take: Int!) {{
+  contents(skip: $skip, take: $take) {{
+{_CONTENT_SELECTION}
+  }}
+}}
+"""
+
+QUERY_CONTENT_BY_IDENTIFIER = f"""
+query GetContentByIdentifier($identifier: String!) {{
+  content(where: {{ identifier: $identifier }}) {{
+{_CONTENT_SELECTION}
+  }}
+}}
 """
 
 
