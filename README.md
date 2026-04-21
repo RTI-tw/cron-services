@@ -96,6 +96,62 @@ Query 參數：
 GET /export/sidebar-topics-to-gcs?prefix=json/sidebar
 ```
 
+### `GET /export/forbidden-keywords-to-gcs`
+
+依 Keystone `ForbiddenKeyword` 匯出單一檔案 **`keywords.json`**。輸出 shape 與 forum-cms `forbidden-keywords-json.ts` 相同，只包含 `isEnabled=true` 的項目。
+
+```json
+{
+  "generatedAt": "...",
+  "total": 1,
+  "keywords": [
+    {
+      "id": "1",
+      "word": "禁詞",
+      "language": "zh",
+      "translations": {
+        "zh": "禁詞",
+        "en": "forbidden word",
+        "vi": "...",
+        "id": "...",
+        "th": "..."
+      },
+      "exemptions": ["豁免詞"],
+      "updatedAt": "..."
+    }
+  ]
+}
+```
+
+- **GraphQL 條件**：固定使用 `where: { isEnabled: { equals: true } }`
+- **排序**：固定使用 `orderBy: [{ updatedAt: desc }, { id: asc }]`
+- **輸出檔名**：`{prefix}/keywords.json`
+
+| 參數 | 說明 |
+|------|------|
+| `prefix` | 預設 `exports/forbidden-keywords` |
+
+```
+GET /export/forbidden-keywords-to-gcs?prefix=json/forbidden-keywords
+```
+
+### `GET /export/ads-to-gcs`
+
+依目前時間匯出 active ads，寫入單一檔案 **`ads.json`**。
+
+- **GraphQL 條件**：`status=active`、`startAt <= current ISO time`、`endAt >= current ISO time`
+- **輸出 shape**：與 `GetActiveAds` query 回傳一致：`{ "ads": [...] }`
+- **輸出檔名**：`{prefix}/ads.json`
+
+| 參數 | 說明 |
+|------|------|
+| `prefix` | 預設 `exports/ads` |
+| `take` | 預設 `1`，最多輸出幾筆 active ads |
+
+```
+GET /export/ads-to-gcs?prefix=json/ads&take=1
+```
+
 ### `GET /export/home-sections-to-gcs`
 
 一次執行三支固定 GraphQL，並分別輸出到：

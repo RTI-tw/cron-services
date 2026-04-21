@@ -29,6 +29,26 @@ class ExportSidebarTopicsToGcsRequest(BaseModel):
     )
 
 
+class ExportForbiddenKeywordsToGcsRequest(BaseModel):
+    prefix: str = Field(
+        default="exports/forbidden-keywords",
+        description="GCS 目錄前綴（不含時間戳）；寫入 keywords.json，每次覆寫",
+    )
+
+
+class ExportAdsToGcsRequest(BaseModel):
+    prefix: str = Field(
+        default="exports/ads",
+        description="GCS 目錄前綴（不含時間戳）；寫入 ads.json，每次覆寫",
+    )
+    take: int = Field(
+        default=1,
+        ge=1,
+        le=100,
+        description="最多輸出幾筆 active ads",
+    )
+
+
 class ExportTopicPostsToGcsRequest(BaseModel):
     prefix: str = Field(
         default="exports/topic-posts",

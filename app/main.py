@@ -5,6 +5,7 @@ from typing import Annotated, Optional
 from fastapi import Depends, FastAPI, HTTPException, Query
 
 from . import schemas
+from .export_ads import export_active_ads_to_gcs
 from .export_all_posts import (
     export_all_posts_latest_polls_to_gcs,
     export_all_posts_pops_to_gcs,
@@ -16,6 +17,7 @@ from .export_curated_posts import (
     export_curated_posts_pops_to_gcs,
     export_curated_posts_to_gcs,
 )
+from .export_forbidden_keywords import export_forbidden_keywords_to_gcs
 from .export_home_sections import (
     export_home_editor_choices_to_gcs,
     export_home_pop_polls_to_gcs,
@@ -100,6 +102,30 @@ def _export_sidebar_topics_query(
     ),
 ) -> schemas.ExportSidebarTopicsToGcsRequest:
     return schemas.ExportSidebarTopicsToGcsRequest(prefix=prefix)
+
+
+def _export_forbidden_keywords_query(
+    prefix: str = Query(
+        default="exports/forbidden-keywords",
+        description=schemas.ExportForbiddenKeywordsToGcsRequest.model_fields["prefix"].description,
+    ),
+) -> schemas.ExportForbiddenKeywordsToGcsRequest:
+    return schemas.ExportForbiddenKeywordsToGcsRequest(prefix=prefix)
+
+
+def _export_ads_query(
+    prefix: str = Query(
+        default="exports/ads",
+        description=schemas.ExportAdsToGcsRequest.model_fields["prefix"].description,
+    ),
+    take: int = Query(
+        default=1,
+        ge=1,
+        le=100,
+        description=schemas.ExportAdsToGcsRequest.model_fields["take"].description,
+    ),
+) -> schemas.ExportAdsToGcsRequest:
+    return schemas.ExportAdsToGcsRequest(prefix=prefix, take=take)
 
 
 def _export_topics_daily_stats_query(
@@ -375,6 +401,57 @@ async def export_sidebar_topics(
         raise HTTPException(status_code=503, detail=_runtime_error_http_detail(e)) from e
     except Exception as e:  # noqa: BLE001
         logger.exception("export/sidebar-topics-to-gcs failed: %s", e)
+        raise HTTPException(status_code=502, detail=str(e)) from e
+
+
+@app.get("/export/forbidden-keywords-to-gcs")
+async def export_forbidden_keywords(
+    body: Annotated[
+        schemas.ExportForbiddenKeywordsToGcsRequest,
+        Depends(_export_forbidden_keywords_query),
+    ],
+):
+    """
+    依 ForbiddenKeyword 匯出 keywords.json 並上傳 GCS。
+    """
+    try:
+        return await asyncio.to_thread(
+            export_forbidden_keywords_to_gcs,
+            prefix=body.prefix,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except RuntimeError as e:
+        logger.warning("export/forbidden-keywords-to-gcs RuntimeError: %s", e)
+        raise HTTPException(status_code=503, detail=_runtime_error_http_detail(e)) from e
+    except Exception as e:  # noqa: BLE001
+        logger.exception("export/forbidden-keywords-to-gcs failed: %s", e)
+        raise HTTPException(status_code=502, detail=str(e)) from e
+
+
+@app.get("/export/ads-to-gcs")
+async def export_ads(
+    body: Annotated[
+        schemas.ExportAdsToGcsRequest,
+        Depends(_export_ads_query),
+    ],
+):
+    """
+    依目前時間輸出 active ads.json 並上傳 GCS。
+    """
+    try:
+        return await asyncio.to_thread(
+            export_active_ads_to_gcs,
+            prefix=body.prefix,
+            take=body.take,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except RuntimeError as e:
+        logger.warning("export/ads-to-gcs RuntimeError: %s", e)
+        raise HTTPException(status_code=503, detail=_runtime_error_http_detail(e)) from e
+    except Exception as e:  # noqa: BLE001
+        logger.exception("export/ads-to-gcs failed: %s", e)
         raise HTTPException(status_code=502, detail=str(e)) from e
 
 
