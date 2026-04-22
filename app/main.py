@@ -27,6 +27,7 @@ from .export_posts_sitemap import export_posts_sitemap_to_gcs
 from .export_sidebar_topics import export_sidebar_topics_to_gcs
 from .export_topic_posts import export_topic_pops_to_gcs, export_topic_posts_to_gcs
 from .export_topics_daily_stats import export_topics_daily_stats_to_gcs
+from .retry_missing_translations import retry_missing_translations
 
 logger = logging.getLogger(__name__)
 app = FastAPI(title="Forum Cron Services", version="0.1.0")
@@ -332,6 +333,44 @@ def _export_all_posts_query(
         post_state=post_state,
         scan_multiplier=scan_multiplier,
         cache_control_seconds=cache_control_seconds,
+    )
+
+
+def _retry_missing_translations_query(
+    targets: str = Query(
+        default="posts,comments",
+        description=schemas.RetryMissingTranslationsRequest.model_fields["targets"].description,
+    ),
+    limit: int = Query(
+        default=100,
+        ge=1,
+        le=1000,
+        description=schemas.RetryMissingTranslationsRequest.model_fields["limit"].description,
+    ),
+    dry_run: bool = Query(
+        default=True,
+        description=schemas.RetryMissingTranslationsRequest.model_fields["dry_run"].description,
+    ),
+    message_services_url: str = Query(
+        default="",
+        description=schemas.RetryMissingTranslationsRequest.model_fields["message_services_url"].description,
+    ),
+    post_statuses: str = Query(
+        default="published,pending,draft",
+        description=schemas.RetryMissingTranslationsRequest.model_fields["post_statuses"].description,
+    ),
+    comment_statuses: str = Query(
+        default="published",
+        description=schemas.RetryMissingTranslationsRequest.model_fields["comment_statuses"].description,
+    ),
+) -> schemas.RetryMissingTranslationsRequest:
+    return schemas.RetryMissingTranslationsRequest(
+        targets=targets,
+        limit=limit,
+        dry_run=dry_run,
+        message_services_url=message_services_url,
+        post_statuses=post_statuses,
+        comment_statuses=comment_statuses,
     )
 
 
@@ -812,6 +851,36 @@ async def export_all_posts_latest_polls(
         raise HTTPException(status_code=503, detail=_runtime_error_http_detail(e)) from e
     except Exception as e:  # noqa: BLE001
         logger.exception("export/all-posts-latest-polls-to-gcs failed: %s", e)
+        raise HTTPException(status_code=502, detail=str(e)) from e
+
+
+@app.get("/maintenance/retry-missing-translations")
+async def maintenance_retry_missing_translations(
+    body: Annotated[
+        schemas.RetryMissingTranslationsRequest,
+        Depends(_retry_missing_translations_query),
+    ],
+):
+    """
+    掃描 spamScore 為 null 的 post/comment，重新呼叫 message-services 補送 AI 翻譯。
+    """
+    try:
+        return await asyncio.to_thread(
+            retry_missing_translations,
+            targets=body.targets,
+            limit=body.limit,
+            dry_run=body.dry_run,
+            message_services_url=body.message_services_url,
+            post_statuses=body.post_statuses,
+            comment_statuses=body.comment_statuses,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except RuntimeError as e:
+        logger.warning("maintenance/retry-missing-translations RuntimeError: %s", e)
+        raise HTTPException(status_code=503, detail=_runtime_error_http_detail(e)) from e
+    except Exception as e:  # noqa: BLE001
+        logger.exception("maintenance/retry-missing-translations failed: %s", e)
         raise HTTPException(status_code=502, detail=str(e)) from e
 
 

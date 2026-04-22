@@ -86,7 +86,7 @@ class ExportPostsSitemapToGcsRequest(BaseModel):
     )
     base_url: str = Field(
         default="",
-        description="網站 base URL；若未提供則讀取 SITE_BASE_URL 環境變數",
+        description="網站 base URL；若未提供則讀取 SITE_BASE_URL / PUBLIC_SITE_URL / FRONTEND_BASE_URL / BASE_URL 環境變數",
     )
     url_template: str = Field(
         default="/{lang}/posts/{id}",
@@ -220,4 +220,33 @@ class ExportTopicsDailyStatsToGcsRequest(BaseModel):
         default=None,
         ge=0,
         description=_CACHE_CONTROL_DESCRIPTION,
+    )
+
+
+class RetryMissingTranslationsRequest(BaseModel):
+    targets: str = Field(
+        default="posts,comments",
+        description="要補送的資料類型，可用 posts、comments 或 posts,comments",
+    )
+    limit: int = Field(
+        default=100,
+        ge=1,
+        le=1000,
+        description="每種 target 本次最多挑幾筆 spamScore 為 null 的資料",
+    )
+    dry_run: bool = Field(
+        default=True,
+        description="true 只列出待補送資料，不呼叫 message-services；scheduler 應設 false",
+    )
+    message_services_url: str = Field(
+        default="",
+        description="message-services 根網址；若未提供則讀取 MESSAGE_SERVICES_URL / MESSAGE_SERVICES_BASE_URL",
+    )
+    post_statuses: str = Field(
+        default="published,pending,draft",
+        description="Post status 篩選，逗號分隔；傳 all 表示不篩狀態",
+    )
+    comment_statuses: str = Field(
+        default="published",
+        description="Comment status 篩選，逗號分隔；傳 all 表示不篩狀態",
     )

@@ -11,6 +11,12 @@ from .export_topic_posts import _apply_cache_control, _normalize_prefix, _to_int
 from .keystone_gql import execute_gql
 
 LANGUAGES = ("zh", "en", "vi", "id", "th")
+BASE_URL_ENV_VARS = (
+    "SITE_BASE_URL",
+    "PUBLIC_SITE_URL",
+    "FRONTEND_BASE_URL",
+    "BASE_URL",
+)
 
 QUERY_PUBLISHED_POSTS_FOR_SITEMAP = """
 query PublishedPostsForSitemap($skip: Int!, $take: Int!) {
@@ -46,9 +52,15 @@ query PublishedContentsForSitemap($skip: Int!, $take: Int!) {
 
 
 def _normalize_base_url(base_url: str) -> str:
-    value = (base_url or os.getenv("SITE_BASE_URL") or "").strip()
+    value = (base_url or "").strip()
     if not value:
-        raise ValueError("base_url 未提供，且 SITE_BASE_URL 環境變數未設定")
+        for env_name in BASE_URL_ENV_VARS:
+            value = (os.getenv(env_name) or "").strip()
+            if value:
+                break
+    if not value:
+        env_names = " / ".join(BASE_URL_ENV_VARS)
+        raise ValueError(f"base_url 未提供，且環境變數 {env_names} 皆未設定")
     return value.rstrip("/")
 
 

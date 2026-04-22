@@ -21,6 +21,8 @@ pip install -r requirements.txt
 - `GCP_PROJECT_ID`：選填，便於日後擴充
 - `GQL_POST_MAX_TAKE`：選填，預設 `100`。Keystone 對 `Post` 的 `graphql.maximumTake` 常有上限（例如 100）；匯出查詢的 `take` 會受此上限限制，避免 GraphQL **HTTP 400**。
 - `HOT_SCORE_THRESHOLD`：選填，預設 `5`。`-pop.json` 在「3天內」綜合分數達到此門檻才視為熱門。
+- `SITE_BASE_URL`：選填，sitemap 預設網站 base URL；也可改用 `PUBLIC_SITE_URL`、`FRONTEND_BASE_URL` 或 `BASE_URL`。
+- `MESSAGE_SERVICES_URL`：選填，`/maintenance/retry-missing-translations` 呼叫 message-services 的根網址；也可改用 `MESSAGE_SERVICES_BASE_URL`。
 
 Cloud Run 執行身分需能寫入該 bucket（例如 `roles/storage.objectAdmin` 或最小必要權限）。
 
@@ -180,7 +182,7 @@ GET /export/ads-to-gcs?prefix=json/ads&take=1
 | 參數 | 說明 |
 |------|------|
 | `prefix` | 預設 `exports/sitemaps` |
-| `base_url` | 網站 base URL，例如 `https://example.com`；若不傳，讀取環境變數 `SITE_BASE_URL` |
+| `base_url` | 網站 base URL，例如 `https://example.com`；若不傳，依序讀取環境變數 `SITE_BASE_URL` / `PUBLIC_SITE_URL` / `FRONTEND_BASE_URL` / `BASE_URL` |
 | `url_template` | 預設 `/{lang}/posts/{id}`，可用 `{lang}` 與 `{id}` |
 | `content_url_template` | 預設 `/{lang}/{identifier}`，可用 `{lang}` 與 `{identifier}` |
 | `page_size` | 預設 `200`，每次 GraphQL 擷取幾筆 published posts |
@@ -475,3 +477,40 @@ GET /export/topics-daily-stats-to-gcs?prefix=exports/topic-daily-stats/dev&timez
 ```
 
 `local_date` 可加上，例如 `&local_date=2026-04-07`。
+
+### `GET /maintenance/retry-missing-translations`
+
+掃描 `spamScore = null` 的 posts / comments，重新呼叫 message-services `POST /hooks/sync-translations` 補送 AI 翻譯與 spamScore。
+
+- Post：預設篩選 `status in published,pending,draft`，且 `title` 或 `content` 不為空。
+- Comment：預設篩選 `status in published`，`content` 不為空，且 `pauseAutoTranslation=false`。
+- 預設 `dry_run=true`，只列出符合條件的資料，不會真的呼叫 message-services。
+
+Query 參數：
+
+| 參數 | 說明 |
+|------|------|
+| `targets` | 預設 `posts,comments`；可傳 `posts`、`comments` 或 `posts,comments` |
+| `limit` | 預設 `100`；每種 target 本次最多挑幾筆 |
+| `dry_run` | 預設 `true`；Cloud Scheduler 要實際補送時設 `false` |
+| `message_services_url` | 選填；message-services 根網址。若不傳，讀 `MESSAGE_SERVICES_URL` / `MESSAGE_SERVICES_BASE_URL` |
+| `post_statuses` | 預設 `published,pending,draft`；傳 `all` 表示不篩狀態 |
+| `comment_statuses` | 預設 `published`；傳 `all` 表示不篩狀態 |
+
+先 dry-run 檢查：
+
+```
+GET /maintenance/retry-missing-translations?targets=posts,comments&limit=50&dry_run=true
+```
+
+Cloud Scheduler 實際補送：
+
+```
+GET /maintenance/retry-missing-translations?targets=posts,comments&limit=100&dry_run=false
+```
+
+若環境沒有設定 `MESSAGE_SERVICES_URL`，也可以直接帶：
+
+```
+GET /maintenance/retry-missing-translations?targets=posts,comments&limit=100&dry_run=false&message_services_url=https://message-services-xxx.a.run.app
+```
