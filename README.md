@@ -35,6 +35,19 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 ## API（由 message-services 搬移）
 
+所有 `/export/*-to-gcs` endpoint 都支援共用參數 `cache_control_seconds`：
+
+| 參數 | 說明 |
+|------|------|
+| `cache_control_seconds` | 選填；若提供，GCS 物件會設定 `Cache-Control: public, max-age=<秒數>`。若省略，維持 GCS 預設行為 |
+
+例如：
+
+```
+GET /export/all-posts-pops-to-gcs?prefix=json/all-posts&limit=100&cache_control_seconds=600
+GET /export/posts-sitemap-to-gcs?prefix=json/sitemaps&base_url=https://example.com&cache_control_seconds=3600
+```
+
 ### `GET /export/contents-to-gcs`
 
 Query 參數（皆有預設值，可省略）：

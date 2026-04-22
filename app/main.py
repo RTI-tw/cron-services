@@ -31,6 +31,10 @@ from .export_topics_daily_stats import export_topics_daily_stats_to_gcs
 logger = logging.getLogger(__name__)
 app = FastAPI(title="Forum Cron Services", version="0.1.0")
 
+_CACHE_CONTROL_DESCRIPTION = schemas.ExportContentsToGcsRequest.model_fields[
+    "cache_control_seconds"
+].description
+
 
 def _export_contents_query(
     prefix: str = Query(
@@ -47,9 +51,17 @@ def _export_contents_query(
         default=None,
         description=schemas.ExportContentsToGcsRequest.model_fields["slug"].description,
     ),
+    cache_control_seconds: Optional[int] = Query(
+        default=None,
+        ge=0,
+        description=_CACHE_CONTROL_DESCRIPTION,
+    ),
 ) -> schemas.ExportContentsToGcsRequest:
     return schemas.ExportContentsToGcsRequest(
-        prefix=prefix, page_size=page_size, slug=slug
+        prefix=prefix,
+        page_size=page_size,
+        slug=slug,
+        cache_control_seconds=cache_control_seconds,
     )
 
 
@@ -78,12 +90,18 @@ def _export_topic_posts_query(
             "scan_multiplier"
         ].description,
     ),
+    cache_control_seconds: Optional[int] = Query(
+        default=None,
+        ge=0,
+        description=_CACHE_CONTROL_DESCRIPTION,
+    ),
 ) -> schemas.ExportTopicPostsToGcsRequest:
     return schemas.ExportTopicPostsToGcsRequest(
         prefix=prefix,
         per_topic_limit=per_topic_limit,
         post_state=post_state,
         scan_multiplier=scan_multiplier,
+        cache_control_seconds=cache_control_seconds,
     )
 
 
@@ -92,8 +110,16 @@ def _export_home_sections_query(
         default="exports/home-sections",
         description=schemas.ExportHomeSectionsToGcsRequest.model_fields["prefix"].description,
     ),
+    cache_control_seconds: Optional[int] = Query(
+        default=None,
+        ge=0,
+        description=_CACHE_CONTROL_DESCRIPTION,
+    ),
 ) -> schemas.ExportHomeSectionsToGcsRequest:
-    return schemas.ExportHomeSectionsToGcsRequest(prefix=prefix)
+    return schemas.ExportHomeSectionsToGcsRequest(
+        prefix=prefix,
+        cache_control_seconds=cache_control_seconds,
+    )
 
 
 def _export_sidebar_topics_query(
@@ -101,8 +127,16 @@ def _export_sidebar_topics_query(
         default="exports/sidebar-topics",
         description=schemas.ExportSidebarTopicsToGcsRequest.model_fields["prefix"].description,
     ),
+    cache_control_seconds: Optional[int] = Query(
+        default=None,
+        ge=0,
+        description=_CACHE_CONTROL_DESCRIPTION,
+    ),
 ) -> schemas.ExportSidebarTopicsToGcsRequest:
-    return schemas.ExportSidebarTopicsToGcsRequest(prefix=prefix)
+    return schemas.ExportSidebarTopicsToGcsRequest(
+        prefix=prefix,
+        cache_control_seconds=cache_control_seconds,
+    )
 
 
 def _export_forbidden_keywords_query(
@@ -110,8 +144,16 @@ def _export_forbidden_keywords_query(
         default="exports/forbidden-keywords",
         description=schemas.ExportForbiddenKeywordsToGcsRequest.model_fields["prefix"].description,
     ),
+    cache_control_seconds: Optional[int] = Query(
+        default=None,
+        ge=0,
+        description=_CACHE_CONTROL_DESCRIPTION,
+    ),
 ) -> schemas.ExportForbiddenKeywordsToGcsRequest:
-    return schemas.ExportForbiddenKeywordsToGcsRequest(prefix=prefix)
+    return schemas.ExportForbiddenKeywordsToGcsRequest(
+        prefix=prefix,
+        cache_control_seconds=cache_control_seconds,
+    )
 
 
 def _export_ads_query(
@@ -125,8 +167,17 @@ def _export_ads_query(
         le=100,
         description=schemas.ExportAdsToGcsRequest.model_fields["take"].description,
     ),
+    cache_control_seconds: Optional[int] = Query(
+        default=None,
+        ge=0,
+        description=_CACHE_CONTROL_DESCRIPTION,
+    ),
 ) -> schemas.ExportAdsToGcsRequest:
-    return schemas.ExportAdsToGcsRequest(prefix=prefix, take=take)
+    return schemas.ExportAdsToGcsRequest(
+        prefix=prefix,
+        take=take,
+        cache_control_seconds=cache_control_seconds,
+    )
 
 
 def _export_posts_sitemap_query(
@@ -158,6 +209,11 @@ def _export_posts_sitemap_query(
         le=50000,
         description=schemas.ExportPostsSitemapToGcsRequest.model_fields["max_urls_per_file"].description,
     ),
+    cache_control_seconds: Optional[int] = Query(
+        default=None,
+        ge=0,
+        description=_CACHE_CONTROL_DESCRIPTION,
+    ),
 ) -> schemas.ExportPostsSitemapToGcsRequest:
     return schemas.ExportPostsSitemapToGcsRequest(
         prefix=prefix,
@@ -166,6 +222,7 @@ def _export_posts_sitemap_query(
         content_url_template=content_url_template,
         page_size=page_size,
         max_urls_per_file=max_urls_per_file,
+        cache_control_seconds=cache_control_seconds,
     )
 
 
@@ -191,12 +248,18 @@ def _export_topics_daily_stats_query(
             "post_state"
         ].description,
     ),
+    cache_control_seconds: Optional[int] = Query(
+        default=None,
+        ge=0,
+        description=_CACHE_CONTROL_DESCRIPTION,
+    ),
 ) -> schemas.ExportTopicsDailyStatsToGcsRequest:
     return schemas.ExportTopicsDailyStatsToGcsRequest(
         prefix=prefix,
         timezone=timezone_name,
         local_date=local_date,
         post_state=post_state,
+        cache_control_seconds=cache_control_seconds,
     )
 
 
@@ -221,12 +284,18 @@ def _export_curated_posts_query(
         le=50,
         description=schemas.ExportCuratedPostsToGcsRequest.model_fields["scan_multiplier"].description,
     ),
+    cache_control_seconds: Optional[int] = Query(
+        default=None,
+        ge=0,
+        description=_CACHE_CONTROL_DESCRIPTION,
+    ),
 ) -> schemas.ExportCuratedPostsToGcsRequest:
     return schemas.ExportCuratedPostsToGcsRequest(
         prefix=prefix,
         limit=limit,
         post_state=post_state,
         scan_multiplier=scan_multiplier,
+        cache_control_seconds=cache_control_seconds,
     )
 
 
@@ -251,12 +320,18 @@ def _export_all_posts_query(
         le=50,
         description=schemas.ExportAllPostsToGcsRequest.model_fields["scan_multiplier"].description,
     ),
+    cache_control_seconds: Optional[int] = Query(
+        default=None,
+        ge=0,
+        description=_CACHE_CONTROL_DESCRIPTION,
+    ),
 ) -> schemas.ExportAllPostsToGcsRequest:
     return schemas.ExportAllPostsToGcsRequest(
         prefix=prefix,
         limit=limit,
         post_state=post_state,
         scan_multiplier=scan_multiplier,
+        cache_control_seconds=cache_control_seconds,
     )
 
 
@@ -284,6 +359,7 @@ async def export_contents_to_gcs(
             prefix=body.prefix,
             page_size=body.page_size,
             content_slug=body.slug,
+            cache_control_seconds=body.cache_control_seconds,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
@@ -309,6 +385,7 @@ async def export_topic_posts(
             per_topic_limit=body.per_topic_limit,
             post_state=body.post_state,
             scan_multiplier=body.scan_multiplier,
+            cache_control_seconds=body.cache_control_seconds,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
@@ -334,6 +411,7 @@ async def export_topic_pops(
             per_topic_limit=body.per_topic_limit,
             post_state=body.post_state,
             scan_multiplier=body.scan_multiplier,
+            cache_control_seconds=body.cache_control_seconds,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
@@ -359,6 +437,7 @@ async def export_home_sections(
         return await asyncio.to_thread(
             export_home_sections_to_gcs,
             prefix=body.prefix,
+            cache_control_seconds=body.cache_control_seconds,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
@@ -384,6 +463,7 @@ async def export_home_editor_choices(
         return await asyncio.to_thread(
             export_home_editor_choices_to_gcs,
             prefix=body.prefix,
+            cache_control_seconds=body.cache_control_seconds,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
@@ -409,6 +489,7 @@ async def export_home_pop_polls(
         return await asyncio.to_thread(
             export_home_pop_polls_to_gcs,
             prefix=body.prefix,
+            cache_control_seconds=body.cache_control_seconds,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
@@ -434,6 +515,7 @@ async def export_sidebar_topics(
         return await asyncio.to_thread(
             export_sidebar_topics_to_gcs,
             prefix=body.prefix,
+            cache_control_seconds=body.cache_control_seconds,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
@@ -459,6 +541,7 @@ async def export_forbidden_keywords(
         return await asyncio.to_thread(
             export_forbidden_keywords_to_gcs,
             prefix=body.prefix,
+            cache_control_seconds=body.cache_control_seconds,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
@@ -485,6 +568,7 @@ async def export_ads(
             export_active_ads_to_gcs,
             prefix=body.prefix,
             take=body.take,
+            cache_control_seconds=body.cache_control_seconds,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
@@ -515,6 +599,7 @@ async def export_posts_sitemap(
             content_url_template=body.content_url_template,
             page_size=body.page_size,
             max_urls_per_file=body.max_urls_per_file,
+            cache_control_seconds=body.cache_control_seconds,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
@@ -544,6 +629,7 @@ async def export_topics_daily_stats(
             timezone_name=body.timezone,
             local_date_str=body.local_date,
             post_state=body.post_state,
+            cache_control_seconds=body.cache_control_seconds,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
@@ -572,6 +658,7 @@ async def export_curated_posts(
             limit=body.limit,
             post_state=body.post_state,
             scan_multiplier=body.scan_multiplier,
+            cache_control_seconds=body.cache_control_seconds,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
@@ -600,6 +687,7 @@ async def export_curated_posts_latest_polls(
             limit=body.limit,
             post_state=body.post_state,
             scan_multiplier=body.scan_multiplier,
+            cache_control_seconds=body.cache_control_seconds,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
@@ -628,6 +716,7 @@ async def export_curated_posts_pops(
             limit=body.limit,
             post_state=body.post_state,
             scan_multiplier=body.scan_multiplier,
+            cache_control_seconds=body.cache_control_seconds,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
@@ -656,6 +745,7 @@ async def export_all_posts(
             limit=body.limit,
             post_state=body.post_state,
             scan_multiplier=body.scan_multiplier,
+            cache_control_seconds=body.cache_control_seconds,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
@@ -684,6 +774,7 @@ async def export_all_posts_pops(
             limit=body.limit,
             post_state=body.post_state,
             scan_multiplier=body.scan_multiplier,
+            cache_control_seconds=body.cache_control_seconds,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
@@ -712,6 +803,7 @@ async def export_all_posts_latest_polls(
             limit=body.limit,
             post_state=body.post_state,
             scan_multiplier=body.scan_multiplier,
+            cache_control_seconds=body.cache_control_seconds,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e

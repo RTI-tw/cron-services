@@ -1,13 +1,13 @@
 import os
 from datetime import datetime, timezone
 from html import escape
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from urllib.parse import quote
 
 from google.cloud import storage
 
 from .config import get_settings
-from .export_topic_posts import _normalize_prefix, _to_int
+from .export_topic_posts import _apply_cache_control, _normalize_prefix, _to_int
 from .keystone_gql import execute_gql
 
 LANGUAGES = ("zh", "en", "vi", "id", "th")
@@ -230,6 +230,7 @@ def export_posts_sitemap_to_gcs(
     content_url_template: str = "/{lang}/{identifier}",
     page_size: int = 200,
     max_urls_per_file: int = 50000,
+    cache_control_seconds: Optional[int] = None,
 ) -> Dict[str, Any]:
     settings = get_settings()
     bucket_name = settings.gcs_bucket
@@ -267,7 +268,9 @@ def export_posts_sitemap_to_gcs(
             filename = f"{kind}-sitemap-{idx}.xml"
             object_path = f"{base_dir}/{filename}" if base_dir else filename
             sitemap_xml = _build_sitemap_xml(chunk)
-            bucket.blob(object_path).upload_from_string(
+            blob = bucket.blob(object_path)
+            _apply_cache_control(blob, cache_control_seconds)
+            blob.upload_from_string(
                 sitemap_xml,
                 content_type="application/xml; charset=utf-8",
             )
@@ -279,7 +282,9 @@ def export_posts_sitemap_to_gcs(
 
     index_path = f"{base_dir}/sitemap.xml" if base_dir else "sitemap.xml"
     sitemap_index_xml = _build_sitemap_index_xml(sitemap_index_entries)
-    bucket.blob(index_path).upload_from_string(
+    blob = bucket.blob(index_path)
+    _apply_cache_control(blob, cache_control_seconds)
+    blob.upload_from_string(
         sitemap_index_xml,
         content_type="application/xml; charset=utf-8",
     )

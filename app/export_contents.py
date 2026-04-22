@@ -1,9 +1,10 @@
 import json
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from google.cloud import storage
 
 from .config import get_settings
+from .export_topic_posts import _apply_cache_control
 from .keystone_gql import execute_gql
 
 _PHOTO_FIELDS = """
@@ -76,6 +77,7 @@ def export_all_contents_to_gcs(
     prefix: str = "exports/contents",
     page_size: int = 200,
     content_slug: str | None = None,
+    cache_control_seconds: Optional[int] = None,
 ) -> Dict[str, Any]:
     """
     透過 Keystone GraphQL 取得全部 contents，逐筆上傳為獨立 JSON 檔案到 GCS。
@@ -112,6 +114,7 @@ def export_all_contents_to_gcs(
 
         payload = json.dumps(row, ensure_ascii=False, indent=2)
         blob = bucket.blob(object_path)
+        _apply_cache_control(blob, cache_control_seconds)
         blob.upload_from_string(payload, content_type="application/json; charset=utf-8")
 
         uploaded_paths.append(object_path)

@@ -185,6 +185,7 @@ def _upload_home_payloads(
     *,
     prefix: str,
     payloads: Dict[str, Dict[str, Any]],
+    cache_control_seconds: Optional[int] = None,
 ) -> List[str]:
     settings = get_settings()
     bucket_name = settings.gcs_bucket
@@ -198,7 +199,7 @@ def _upload_home_payloads(
     uploaded_paths: List[str] = []
     for filename, payload in payloads.items():
         object_path = f"{base_dir}/{filename}" if base_dir else filename
-        _upload_json(bucket, object_path, payload)
+        _upload_json(bucket, object_path, payload, cache_control_seconds)
         uploaded_paths.append(object_path)
     return uploaded_paths
 
@@ -240,6 +241,7 @@ def _build_home_payloads(*, include: Set[str]) -> Tuple[Dict[str, Dict[str, Any]
 def export_home_sections_to_gcs(
     *,
     prefix: str = "exports/home-sections",
+    cache_control_seconds: Optional[int] = None,
 ) -> Dict[str, Any]:
     settings = get_settings()
     bucket_name = settings.gcs_bucket
@@ -250,7 +252,11 @@ def export_home_sections_to_gcs(
     payloads, meta = _build_home_payloads(
         include={"footer", "editor-choices", "pop-polls"},
     )
-    uploaded_paths = _upload_home_payloads(prefix=prefix, payloads=payloads)
+    uploaded_paths = _upload_home_payloads(
+        prefix=prefix,
+        payloads=payloads,
+        cache_control_seconds=cache_control_seconds,
+    )
 
     return {
         "bucket": bucket_name,
@@ -263,9 +269,14 @@ def export_home_sections_to_gcs(
 def export_home_editor_choices_to_gcs(
     *,
     prefix: str = "exports/home-sections",
+    cache_control_seconds: Optional[int] = None,
 ) -> Dict[str, Any]:
     payloads, meta = _build_home_payloads(include={"editor-choices"})
-    uploaded_paths = _upload_home_payloads(prefix=prefix, payloads=payloads)
+    uploaded_paths = _upload_home_payloads(
+        prefix=prefix,
+        payloads=payloads,
+        cache_control_seconds=cache_control_seconds,
+    )
     return {
         "bucket": get_settings().gcs_bucket,
         "prefix": _normalize_prefix(prefix),
@@ -277,9 +288,14 @@ def export_home_editor_choices_to_gcs(
 def export_home_pop_polls_to_gcs(
     *,
     prefix: str = "exports/home-sections",
+    cache_control_seconds: Optional[int] = None,
 ) -> Dict[str, Any]:
     payloads, meta = _build_home_payloads(include={"pop-polls"})
-    uploaded_paths = _upload_home_payloads(prefix=prefix, payloads=payloads)
+    uploaded_paths = _upload_home_payloads(
+        prefix=prefix,
+        payloads=payloads,
+        cache_control_seconds=cache_control_seconds,
+    )
     return {
         "bucket": get_settings().gcs_bucket,
         "prefix": _normalize_prefix(prefix),

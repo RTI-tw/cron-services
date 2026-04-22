@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from google.cloud import storage
 
@@ -234,6 +234,7 @@ def export_curated_posts_to_gcs(
     include_latest: bool = True,
     include_polls: bool = True,
     include_pop: bool = True,
+    cache_control_seconds: Optional[int] = None,
 ) -> Dict[str, Any]:
     settings = get_settings()
     bucket_name = settings.gcs_bucket
@@ -287,7 +288,7 @@ def export_curated_posts_to_gcs(
             targets.append("pop")
         for suffix in targets:
             object_path = f"{base_dir}/{key}-{suffix}.json" if base_dir else f"{key}-{suffix}.json"
-            _upload_json(bucket, object_path, grouped_results[key][suffix])
+            _upload_json(bucket, object_path, grouped_results[key][suffix], cache_control_seconds)
             uploaded_paths.append(object_path)
 
     return {
@@ -310,6 +311,7 @@ def export_curated_posts_latest_polls_to_gcs(
     limit: int = 10,
     post_state: str = "active",
     scan_multiplier: int = 10,
+    cache_control_seconds: Optional[int] = None,
 ) -> Dict[str, Any]:
     return export_curated_posts_to_gcs(
         prefix=prefix,
@@ -319,6 +321,7 @@ def export_curated_posts_latest_polls_to_gcs(
         include_latest=True,
         include_polls=True,
         include_pop=False,
+        cache_control_seconds=cache_control_seconds,
     )
 
 
@@ -328,6 +331,7 @@ def export_curated_posts_pops_to_gcs(
     limit: int = 10,
     post_state: str = "active",
     scan_multiplier: int = 10,
+    cache_control_seconds: Optional[int] = None,
 ) -> Dict[str, Any]:
     return export_curated_posts_to_gcs(
         prefix=prefix,
@@ -337,4 +341,5 @@ def export_curated_posts_pops_to_gcs(
         include_latest=False,
         include_polls=False,
         include_pop=True,
+        cache_control_seconds=cache_control_seconds,
     )

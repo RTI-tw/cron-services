@@ -3,6 +3,11 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 
+_CACHE_CONTROL_DESCRIPTION = (
+    "選填；上傳 GCS 物件時設定 Cache-Control: public, max-age=<秒數>"
+)
+
+
 class ExportContentsToGcsRequest(BaseModel):
     prefix: str = Field(
         default="exports/contents",
@@ -13,12 +18,22 @@ class ExportContentsToGcsRequest(BaseModel):
         default=None,
         description="選填；Keystone Content.identifier（slug）。若提供則只匯出該筆，未提供則匯出全部",
     )
+    cache_control_seconds: Optional[int] = Field(
+        default=None,
+        ge=0,
+        description=_CACHE_CONTROL_DESCRIPTION,
+    )
 
 
 class ExportHomeSectionsToGcsRequest(BaseModel):
     prefix: str = Field(
         default="exports/home-sections",
         description="GCS 目錄前綴（不含時間戳）；寫入 footer.json / editor-choices.json / pop-polls.json，每次覆寫",
+    )
+    cache_control_seconds: Optional[int] = Field(
+        default=None,
+        ge=0,
+        description=_CACHE_CONTROL_DESCRIPTION,
     )
 
 
@@ -27,12 +42,22 @@ class ExportSidebarTopicsToGcsRequest(BaseModel):
         default="exports/sidebar-topics",
         description="GCS 目錄前綴（不含時間戳）；寫入 topics.json，每次覆寫",
     )
+    cache_control_seconds: Optional[int] = Field(
+        default=None,
+        ge=0,
+        description=_CACHE_CONTROL_DESCRIPTION,
+    )
 
 
 class ExportForbiddenKeywordsToGcsRequest(BaseModel):
     prefix: str = Field(
         default="exports/forbidden-keywords",
         description="GCS 目錄前綴（不含時間戳）；寫入 keywords.json，每次覆寫",
+    )
+    cache_control_seconds: Optional[int] = Field(
+        default=None,
+        ge=0,
+        description=_CACHE_CONTROL_DESCRIPTION,
     )
 
 
@@ -46,6 +71,11 @@ class ExportAdsToGcsRequest(BaseModel):
         ge=1,
         le=100,
         description="最多輸出幾筆 active ads",
+    )
+    cache_control_seconds: Optional[int] = Field(
+        default=None,
+        ge=0,
+        description=_CACHE_CONTROL_DESCRIPTION,
     )
 
 
@@ -78,6 +108,11 @@ class ExportPostsSitemapToGcsRequest(BaseModel):
         le=50000,
         description="每個 sitemap 檔最多包含幾個 URL；Google sitemap 上限為 50000",
     )
+    cache_control_seconds: Optional[int] = Field(
+        default=None,
+        ge=0,
+        description=_CACHE_CONTROL_DESCRIPTION,
+    )
 
 
 class ExportTopicPostsToGcsRequest(BaseModel):
@@ -100,6 +135,11 @@ class ExportTopicPostsToGcsRequest(BaseModel):
         ge=1,
         le=50,
         description="熱門候選池倍率（只影響 -pop.json；候選數約為 per_topic_limit * scan_multiplier，並受 GQL_POST_MAX_TAKE 上限）",
+    )
+    cache_control_seconds: Optional[int] = Field(
+        default=None,
+        ge=0,
+        description=_CACHE_CONTROL_DESCRIPTION,
     )
 
 
@@ -124,6 +164,11 @@ class ExportCuratedPostsToGcsRequest(BaseModel):
         le=50,
         description="熱門候選池倍率（只影響 -pop.json；候選數約為 limit * scan_multiplier，並受 GQL_POST_MAX_TAKE 上限）",
     )
+    cache_control_seconds: Optional[int] = Field(
+        default=None,
+        ge=0,
+        description=_CACHE_CONTROL_DESCRIPTION,
+    )
 
 
 class ExportAllPostsToGcsRequest(BaseModel):
@@ -147,6 +192,11 @@ class ExportAllPostsToGcsRequest(BaseModel):
         le=50,
         description="熱門候選池倍率（只影響 -pop.json；候選數約為 limit * scan_multiplier，並受 GQL_POST_MAX_TAKE 上限）",
     )
+    cache_control_seconds: Optional[int] = Field(
+        default=None,
+        ge=0,
+        description=_CACHE_CONTROL_DESCRIPTION,
+    )
 
 
 class ExportTopicsDailyStatsToGcsRequest(BaseModel):
@@ -165,4 +215,9 @@ class ExportTopicsDailyStatsToGcsRequest(BaseModel):
     post_state: str = Field(
         default="active",
         description="文章狀態；active 會映射為 Keystone status=published",
+    )
+    cache_control_seconds: Optional[int] = Field(
+        default=None,
+        ge=0,
+        description=_CACHE_CONTROL_DESCRIPTION,
     )

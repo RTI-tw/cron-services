@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from google.cloud import storage
 
@@ -48,6 +48,7 @@ def export_active_ads_to_gcs(
     *,
     prefix: str = "exports/ads",
     take: int = 1,
+    cache_control_seconds: Optional[int] = None,
 ) -> Dict[str, Any]:
     settings = get_settings()
     bucket_name = settings.gcs_bucket
@@ -75,7 +76,7 @@ def export_active_ads_to_gcs(
 
     storage_client = storage.Client()
     bucket = storage_client.bucket(bucket_name)
-    _upload_json(bucket, object_path, payload)
+    _upload_json(bucket, object_path, payload, cache_control_seconds)
 
     return {
         "bucket": bucket_name,

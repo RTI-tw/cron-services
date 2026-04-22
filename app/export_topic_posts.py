@@ -2,7 +2,7 @@ import json
 import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Set, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from google.cloud import storage
 
@@ -409,8 +409,20 @@ def _topic_payload(generated_at: str, topic_row: Dict[str, Any], posts_count: in
     }, posts_count)
 
 
-def _upload_json(bucket: storage.Bucket, path: str, payload: Dict[str, Any]) -> None:
+def _apply_cache_control(blob: storage.Blob, cache_control_seconds: Optional[int] = None) -> None:
+    if cache_control_seconds is None:
+        return
+    blob.cache_control = f"public, max-age={cache_control_seconds}"
+
+
+def _upload_json(
+    bucket: storage.Bucket,
+    path: str,
+    payload: Dict[str, Any],
+    cache_control_seconds: Optional[int] = None,
+) -> None:
     blob = bucket.blob(path)
+    _apply_cache_control(blob, cache_control_seconds)
     blob.upload_from_string(json.dumps(payload, ensure_ascii=False, indent=2), content_type="application/json; charset=utf-8")
 
 
@@ -514,6 +526,7 @@ def _export_topic_files_to_gcs(
     include_latest: bool,
     include_polls: bool,
     include_pop: bool,
+    cache_control_seconds: Optional[int] = None,
 ) -> Dict[str, Any]:
     settings = get_settings()
     bucket_name = settings.gcs_bucket
@@ -606,7 +619,7 @@ def _export_topic_files_to_gcs(
             if not payload:
                 continue
             object_path = _under_base(f"{stem}-{suffix}.json")
-            _upload_json(bucket, object_path, payload)
+            _upload_json(bucket, object_path, payload, cache_control_seconds)
             uploaded_paths.append(object_path)
 
     return {
@@ -630,6 +643,7 @@ def export_topic_posts_to_gcs(
     per_topic_limit: int = 10,
     post_state: str = "active",
     scan_multiplier: int = 10,
+    cache_control_seconds: Optional[int] = None,
 ) -> Dict[str, Any]:
     """輸出每個 topic 的 latest/polls 兩種檔案（不含 pop）。"""
     return _export_topic_files_to_gcs(
@@ -640,6 +654,7 @@ def export_topic_posts_to_gcs(
         include_latest=True,
         include_polls=True,
         include_pop=False,
+        cache_control_seconds=cache_control_seconds,
     )
 
 
@@ -649,6 +664,7 @@ def export_topic_pops_to_gcs(
     per_topic_limit: int = 10,
     post_state: str = "active",
     scan_multiplier: int = 10,
+    cache_control_seconds: Optional[int] = None,
 ) -> Dict[str, Any]:
     """只輸出每個 topic 的 pop 檔案。"""
     return _export_topic_files_to_gcs(
@@ -659,4 +675,5 @@ def export_topic_pops_to_gcs(
         include_latest=False,
         include_polls=False,
         include_pop=True,
+        cache_control_seconds=cache_control_seconds,
     )

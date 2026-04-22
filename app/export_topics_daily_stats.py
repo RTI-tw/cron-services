@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 from datetime import date, datetime, time, timedelta, timezone
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from zoneinfo import ZoneInfo
 
 from google.cloud import storage
@@ -67,6 +67,7 @@ def export_topics_daily_stats_to_gcs(
     timezone_name: str = "Asia/Taipei",
     local_date_str: str | None = None,
     post_state: str = "active",
+    cache_control_seconds: Optional[int] = None,
 ) -> Dict[str, Any]:
     """
     產出單一檔案 ``{prefix}/topics-daily.json``（無時間戳子目錄；每次執行覆寫）。
@@ -137,7 +138,7 @@ def export_topics_daily_stats_to_gcs(
 
     storage_client = storage.Client()
     bucket = storage_client.bucket(bucket_name)
-    _upload_json(bucket, object_path, payload)
+    _upload_json(bucket, object_path, payload, cache_control_seconds)
 
     return {
         "bucket": bucket_name,
