@@ -7,11 +7,11 @@ from .config import get_settings
 from .export_topic_posts import (
     _POST_CARD_SELECTION,
     _append_count_fields,
+    _build_pop_posts_with_reason,
     _fetch_posts_in_pages,
     _hot_score,
     _hot_threshold,
     _max_take_per_request,
-    _merge_boost_first_with_reason,
     _normalize_prefix,
     _pop_take_limit,
     _prepare_posts_for_export,
@@ -115,7 +115,14 @@ query AllPostsBoost($take: Int!) {{
 """
 
 
-def _all_posts_payload(generated_at: str, posts_count: int, posts: List[Dict[str, Any]]) -> Dict[str, Any]:
+def _all_posts_payload(
+    generated_at: str,
+    posts_count: int,
+    posts: List[Dict[str, Any]],
+    *,
+    total_count: Optional[int] = None,
+) -> Dict[str, Any]:
+    resolved_total_count = posts_count if total_count is None else total_count
     return _append_count_fields({
         "generatedAt": generated_at,
         "collection": {
@@ -124,7 +131,7 @@ def _all_posts_payload(generated_at: str, posts_count: int, posts: List[Dict[str
         },
         "postsCount": posts_count,
         "posts": _prepare_posts_for_export(posts),
-    }, posts_count)
+    }, resolved_total_count)
 
 
 def export_all_posts_to_gcs(
@@ -172,7 +179,7 @@ def export_all_posts_to_gcs(
     polls_posts = polls_data.get("posts") or []
     polls_count = _to_int(polls_data.get("postsCount"))
 
-    hot_3d_posts, hot_3d_count = _fetch_posts_in_pages(
+    hot_3d_posts, _hot_3d_count = _fetch_posts_in_pages(
         q_hot_window,
         {"since": since_3d},
         total_limit=hot_scan_take,
@@ -180,47 +187,37 @@ def export_all_posts_to_gcs(
 
     boost_data = execute_gql(q_boost, {"take": pop_take})
     boost_posts = boost_data.get("posts") or []
+    hot_14d_posts: List[Dict[str, Any]] = []
 
     ranked_3d = _rank_hot_posts(hot_3d_posts) if hot_3d_posts else []
     eligible_3d = [p for p in ranked_3d if _hot_score(p) >= threshold]
 
-    if eligible_3d:
-        pop_posts = _merge_boost_first_with_reason(
-            boost_posts,
-            eligible_3d,
-            pop_take,
-            default_reason="3d-score",
-        )
-        pop_count = hot_3d_count
-    else:
-        hot_14d_posts, hot_14d_count = _fetch_posts_in_pages(
+    need_14d = len(boost_posts) + len(eligible_3d) < pop_take
+    if need_14d:
+        hot_14d_posts, _hot_14d_count = _fetch_posts_in_pages(
             q_hot_window,
             {"since": since_14d},
             total_limit=hot_scan_take,
         )
-        ranked_14d = _rank_hot_posts(hot_14d_posts) if hot_14d_posts else []
-        has_interaction_14d = any(_hot_score(p) > 0 for p in ranked_14d)
-        if ranked_14d and has_interaction_14d:
-            pop_posts = _merge_boost_first_with_reason(
-                boost_posts,
-                ranked_14d,
-                pop_take,
-                default_reason="14d-score",
-            )
-            pop_count = hot_14d_count
-        else:
-            pop_posts = _merge_boost_first_with_reason(
-                boost_posts,
-                latest_posts[:10],
-                pop_take,
-                default_reason="latest-fallback",
-            )
-            pop_count = latest_count
+    ranked_14d = _rank_hot_posts(hot_14d_posts) if hot_14d_posts else []
+    eligible_14d = [p for p in ranked_14d if _hot_score(p) >= threshold]
+    pop_posts, pop_count = _build_pop_posts_with_reason(
+        boost_posts=boost_posts,
+        eligible_3d_posts=eligible_3d,
+        eligible_14d_posts=eligible_14d,
+        latest_posts=latest_posts,
+        take=pop_take,
+    )
 
     payloads = {
         "latest": _all_posts_payload(generated_at, latest_count, latest_posts),
         "polls": _all_posts_payload(generated_at, polls_count, polls_posts),
-        "pop": _all_posts_payload(generated_at, pop_count, pop_posts),
+        "pop": _all_posts_payload(
+            generated_at,
+            len(pop_posts),
+            pop_posts,
+            total_count=pop_count,
+        ),
     }
     if not pop_posts:
         payloads["pop"]["emptyMessage"] = "尚無貼文"

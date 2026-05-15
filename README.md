@@ -250,7 +250,7 @@ GET /export/home-pop-polls-to-gcs?prefix=exports/home-sections/dev
 - **`posts` 內容**：與前端 `PostCardFields` + `PhotoFields` 相同選取，**不做後端欄位轉換**，前端可直接沿用型別。
 - **`postsCount`**：與前端相同之 `postsCount(where: …)`，代表符合條件的總筆數。
 - **`totalCount`**：目前與 `postsCount` 相同，明確表示總筆數。
-- **`hasAll`**：`posts.length >= postsCount`。
+- **`hasAll`**：`posts.length >= totalCount`。
 - **`content` trimming**：每筆 post 的 `content` 最多輸出 120 個字元；若原文超過，尾端補上 `......`。
 - **debug 欄位**：每筆 post 會帶 `score` 與 `scoreBreakdown`，方便驗證熱門排序；`scoreBreakdown` 會拆出 `reactionsCount`、`reactionScore`、`pollVotes`、`pollScore`、`commentsCount`、`commentScore`、`total`。`pop` 類 JSON 另外會帶 `rankingReason`，值可能是 `boost`、`3d-score`、`14d-score`、`latest-fallback`。
 
@@ -287,8 +287,9 @@ GET /export/topic-posts-to-gcs?prefix=json/topics&per_topic_limit=100&post_state
 每個有 `slug` 的 topic 寫入 `{slug}-pop.json`，可用較低頻率排程。
 
 - 先放該 topic `isBoost=true` 的貼文
-- 再依熱門規則補齊：3天積分門檻（Reaction*2 + PollVote*3 + Comment*5）
-- fallback：先取 3 天內候選池中「達門檻（`HOT_SCORE_THRESHOLD`，預設 5）」的積分排序結果；若不足則改抓 14 天內候選池做積分排序；若 14 天內仍無互動則改用最新文章前 10 篇遞補。若仍為空，JSON 會回傳 `emptyMessage: "尚無貼文"`
+- 再依熱門規則補齊：Reaction*2 + PollVote*3 + Comment*5，總分需 `>= HOT_SCORE_THRESHOLD`（預設 5）
+- 逐層補滿：先補 3 天內達門檻且積分排序前 50 的文章；若不足，再補 14 天內達門檻且積分排序前 50 的文章；若 14 天內完全沒有互動熱門文，才改用最新文章前 10 篇遞補。若仍為空，JSON 會回傳 `emptyMessage: "尚無貼文"`
+- `postsCount` 代表最終輸出的篇數；`totalCount` 代表依上述熱門規則可用來組成結果的總篇數（去重後）；`hasAll` 為 `posts.length >= totalCount`
 
 | 參數 | 說明 |
 |------|------|
@@ -309,16 +310,16 @@ GET /export/topic-pops-to-gcs?prefix=json/topics&per_topic_limit=100&post_state=
 |------|----------|-------------|
 | `editor-choice-latest.json` | `isEditorChoice=true` | `createdAt desc` |
 | `editor-choice-polls.json` | `isEditorChoice=true` 且 `poll != null` | `createdAt desc` |
-| `editor-choice-pop.json` | `isEditorChoice=true` | 與 topic pop 相同：Boost 優先 + 熱門積分 + fallback |
+| `editor-choice-pop.json` | `isEditorChoice=true` | 與 topic pop 相同：Boost 優先 + 3 天熱門 + 14 天熱門補滿 + 無互動時 latest fallback |
 | `life-guide-latest.json` | `isLifeGuide=true` | `createdAt desc` |
 | `life-guide-polls.json` | `isLifeGuide=true` 且 `poll != null` | `createdAt desc` |
-| `life-guide-pop.json` | `isLifeGuide=true` | 與 topic pop 相同：Boost 優先 + 熱門積分 + fallback |
+| `life-guide-pop.json` | `isLifeGuide=true` | 與 topic pop 相同：Boost 優先 + 3 天熱門 + 14 天熱門補滿 + 無互動時 latest fallback |
 
 - **篩選**：`status`（`post_state=active` 時為 enum：`equals: published`）加上對應布林欄位 `isEditorChoice` 或 `isLifeGuide`。
 - **`posts` 內容**：與現有 topic export 一致，沿用前端 `PostCardFields` + `PhotoFields`。
-- **`postsCount`**：回傳該條件下的 `postsCount(where: …)`，代表符合條件的總筆數。
-- **`totalCount`**：目前與 `postsCount` 相同。
-- **`hasAll`**：`posts.length >= postsCount`。
+- **`postsCount`**：`latest` / `polls` 為該條件下的 `postsCount(where: …)`；`pop` 則代表最終輸出的篇數。
+- **`totalCount`**：`latest` / `polls` 為符合條件的總筆數；`pop` 為依熱門規則可用來組成結果的總篇數（去重後）。
+- **`hasAll`**：`posts.length >= totalCount`。
 - **`content` trimming**：每筆 post 的 `content` 最多輸出 120 個字元；若原文超過，尾端補上 `......`。
 - **debug 欄位**：每筆 post 會帶 `score` 與 `scoreBreakdown`，方便驗證熱門排序；`pop` 類 JSON 另外會帶 `rankingReason`。
 
@@ -388,13 +389,13 @@ GET /export/curated-posts-pops-to-gcs?prefix=json/curated&limit=100&post_state=a
 |------|----------|-------------|
 | `all-posts-latest.json` | 所有符合 `status` 的文章 | `createdAt desc` |
 | `all-posts-polls.json` | 所有符合 `status` 且 `poll != null` 的文章 | `createdAt desc` |
-| `all-posts-pop.json` | 所有符合 `status` 的文章 | 與 topic pop 相同：Boost 優先 + 熱門積分 + fallback |
+| `all-posts-pop.json` | 所有符合 `status` 的文章 | 與 topic pop 相同：Boost 優先 + 3 天熱門 + 14 天熱門補滿 + 無互動時 latest fallback |
 
 - **篩選**：僅套用 `status`（`post_state=active` 時為 enum：`equals: published`）。
 - **`posts` 內容**：與現有 topic export / curated export 一致，沿用前端 `PostCardFields` + `PhotoFields`。
-- **`postsCount`**：回傳該條件下的 `postsCount(where: …)`，代表符合條件的總筆數。
-- **`totalCount`**：目前與 `postsCount` 相同。
-- **`hasAll`**：`posts.length >= postsCount`。
+- **`postsCount`**：`latest` / `polls` 為該條件下的 `postsCount(where: …)`；`pop` 則代表最終輸出的篇數。
+- **`totalCount`**：`latest` / `polls` 為符合條件的總筆數；`pop` 為依熱門規則可用來組成結果的總篇數（去重後）。
+- **`hasAll`**：`posts.length >= totalCount`。
 - **`content` trimming**：每筆 post 的 `content` 最多輸出 120 個字元；若原文超過，尾端補上 `......`。
 - **debug 欄位**：每筆 post 會帶 `score` 與 `scoreBreakdown`，方便驗證熱門排序；`pop` 類 JSON 另外會帶 `rankingReason`。
 

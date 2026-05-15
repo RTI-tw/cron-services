@@ -301,39 +301,98 @@ def _merge_boost_first(boost_posts: List[Dict[str, Any]], ranked_posts: List[Dic
     return out
 
 
-def _merge_boost_first_with_reason(
-    boost_posts: List[Dict[str, Any]],
-    ranked_posts: List[Dict[str, Any]],
-    take: int,
+def _append_unique_posts_with_reason(
+    out: List[Dict[str, Any]],
+    seen: Set[str],
+    posts: List[Dict[str, Any]],
     *,
-    default_reason: str,
-) -> List[Dict[str, Any]]:
+    take: int,
+    reason: str,
+) -> None:
+    for post in posts:
+        pid = str(post.get("id") or "").strip()
+        if not pid or pid in seen:
+            continue
+        row = dict(post)
+        row["rankingReason"] = reason
+        out.append(row)
+        seen.add(pid)
+        if len(out) >= take:
+            return
+
+
+def _count_unique_posts(existing_seen: Set[str], posts: List[Dict[str, Any]]) -> int:
+    seen = set(existing_seen)
+    count = 0
+    for post in posts:
+        pid = str(post.get("id") or "").strip()
+        if not pid or pid in seen:
+            continue
+        seen.add(pid)
+        count += 1
+    return count
+
+
+def _build_pop_posts_with_reason(
+    *,
+    boost_posts: List[Dict[str, Any]],
+    eligible_3d_posts: List[Dict[str, Any]],
+    eligible_14d_posts: List[Dict[str, Any]],
+    latest_posts: List[Dict[str, Any]],
+    take: int,
+) -> Tuple[List[Dict[str, Any]], int]:
     out: List[Dict[str, Any]] = []
     seen: Set[str] = set()
 
-    for post in boost_posts:
-        pid = str(post.get("id") or "").strip()
-        if not pid or pid in seen:
-            continue
-        row = dict(post)
-        row["rankingReason"] = "boost"
-        out.append(row)
-        seen.add(pid)
-        if len(out) >= take:
-            return out
+    _append_unique_posts_with_reason(
+        out,
+        seen,
+        boost_posts,
+        take=take,
+        reason="boost",
+    )
+    _append_unique_posts_with_reason(
+        out,
+        seen,
+        eligible_3d_posts,
+        take=take,
+        reason="3d-score",
+    )
 
-    for post in ranked_posts:
-        pid = str(post.get("id") or "").strip()
-        if not pid or pid in seen:
-            continue
-        row = dict(post)
-        row["rankingReason"] = default_reason
-        out.append(row)
-        seen.add(pid)
-        if len(out) >= take:
-            break
+    if len(out) < take:
+        _append_unique_posts_with_reason(
+            out,
+            seen,
+            eligible_14d_posts,
+            take=take,
+            reason="14d-score",
+        )
 
-    return out
+    has_interaction_posts = bool(eligible_3d_posts or eligible_14d_posts)
+    if len(out) < take and not has_interaction_posts:
+        _append_unique_posts_with_reason(
+            out,
+            seen,
+            latest_posts[:10],
+            take=take,
+            reason="latest-fallback",
+        )
+
+    ordered_seen: Set[str] = set()
+    total_available = 0
+    candidate_pools = (
+        (boost_posts, eligible_3d_posts, eligible_14d_posts)
+        if has_interaction_posts
+        else (boost_posts, latest_posts[:10])
+    )
+    for pool in candidate_pools:
+        total_available += _count_unique_posts(ordered_seen, pool)
+        for post in pool:
+            pid = str(post.get("id") or "").strip()
+            if pid:
+                ordered_seen.add(pid)
+
+    return out, total_available
 
 
 def _trim_post_content(text: Any, limit: int = 120) -> Any:
@@ -358,7 +417,7 @@ def _prepare_posts_for_export(posts: List[Dict[str, Any]]) -> List[Dict[str, Any
 
 def _append_count_fields(payload: Dict[str, Any], total_count: int) -> Dict[str, Any]:
     payload["totalCount"] = total_count
-    payload["hasAll"] = len(payload.get("posts") or []) >= payload.get("postsCount", 0)
+    payload["hasAll"] = len(payload.get("posts") or []) >= total_count
     return payload
 
 
@@ -400,13 +459,21 @@ def _fetch_posts_in_pages(
     return posts[:total_limit], posts_count
 
 
-def _topic_payload(generated_at: str, topic_row: Dict[str, Any], posts_count: int, posts: List[Dict[str, Any]]) -> Dict[str, Any]:
+def _topic_payload(
+    generated_at: str,
+    topic_row: Dict[str, Any],
+    posts_count: int,
+    posts: List[Dict[str, Any]],
+    *,
+    total_count: Optional[int] = None,
+) -> Dict[str, Any]:
+    resolved_total_count = posts_count if total_count is None else total_count
     return _append_count_fields({
         "generatedAt": generated_at,
         "topic": {"id": topic_row.get("id"), "name": topic_row.get("name"), "slug": topic_row.get("slug")},
         "postsCount": posts_count,
         "posts": _prepare_posts_for_export(posts),
-    }, posts_count)
+    }, resolved_total_count)
 
 
 def _apply_cache_control(blob: storage.Blob, cache_control_seconds: Optional[int] = None) -> None:
@@ -454,7 +521,7 @@ def _build_per_topic_result(
     polls_posts = polls_data.get("posts") or []
     polls_count = _to_int(polls_data.get("postsCount"))
 
-    hot_3d_posts, hot_3d_count = _fetch_posts_in_pages(
+    hot_3d_posts, _hot_3d_count = _fetch_posts_in_pages(
         q_hot_window,
         {"slug": slug, "since": since_3d},
         total_limit=hot_scan_take,
@@ -464,53 +531,38 @@ def _build_per_topic_result(
     boost_data = execute_gql(q_boost, {"slug": slug, "take": pop_take}, client=client)
     boost_posts = boost_data.get("posts") or []
 
-    pop_posts: List[Dict[str, Any]]
-    pop_count: int
-
+    hot_14d_posts: List[Dict[str, Any]] = []
     ranked_3d = _rank_hot_posts(hot_3d_posts) if hot_3d_posts else []
     eligible_3d = [p for p in ranked_3d if _hot_score(p) >= threshold]
 
-    if eligible_3d:
-        # 第一層：僅採用 3 天內達門檻的熱門文（再由 boost 置頂優先）
-        pop_posts = _merge_boost_first_with_reason(
-            boost_posts,
-            eligible_3d,
-            pop_take,
-            default_reason="3d-score",
-        )
-        pop_count = hot_3d_count
-    else:
-        hot_14d_posts, hot_14d_count = _fetch_posts_in_pages(
+    need_14d = len(boost_posts) + len(eligible_3d) < pop_take
+    if need_14d:
+        hot_14d_posts, _hot_14d_count = _fetch_posts_in_pages(
             q_hot_window,
             {"slug": slug, "since": since_14d},
             total_limit=hot_scan_take,
             client=client,
         )
-        ranked_14d = _rank_hot_posts(hot_14d_posts) if hot_14d_posts else []
-        has_interaction_14d = any(_hot_score(p) > 0 for p in ranked_14d)
-        if ranked_14d and has_interaction_14d:
-            # 第二層：延長到 14 天，取積分最高的熱門文（再由 boost 置頂優先）
-            pop_posts = _merge_boost_first_with_reason(
-                boost_posts,
-                ranked_14d,
-                pop_take,
-                default_reason="14d-score",
-            )
-            pop_count = hot_14d_count
-        else:
-            # 第三層 fallback：14 天內若沒有互動，改用最新前 10 篇遞補
-            pop_posts = _merge_boost_first_with_reason(
-                boost_posts,
-                latest_posts[:10],
-                pop_take,
-                default_reason="latest-fallback",
-            )
-            pop_count = latest_count
+    ranked_14d = _rank_hot_posts(hot_14d_posts) if hot_14d_posts else []
+    eligible_14d = [p for p in ranked_14d if _hot_score(p) >= threshold]
+    pop_posts, pop_count = _build_pop_posts_with_reason(
+        boost_posts=boost_posts,
+        eligible_3d_posts=eligible_3d,
+        eligible_14d_posts=eligible_14d,
+        latest_posts=latest_posts,
+        take=pop_take,
+    )
 
     out = {
         "latest": _topic_payload(generated_at, topic_row, latest_count, latest_posts),
         "polls": _topic_payload(generated_at, topic_row, polls_count, polls_posts),
-        "pop": _topic_payload(generated_at, topic_row, pop_count, pop_posts),
+        "pop": _topic_payload(
+            generated_at,
+            topic_row,
+            len(pop_posts),
+            pop_posts,
+            total_count=pop_count,
+        ),
     }
     if not pop_posts:
         out["pop"]["emptyMessage"] = "尚無貼文"
