@@ -198,11 +198,11 @@ def export_all_posts_to_gcs(
             {"since": since_14d},
         )
     ranked_14d = _rank_hot_posts(hot_14d_posts) if hot_14d_posts else []
-    eligible_14d = [p for p in ranked_14d if _hot_score(p) >= threshold]
+    ranked_14d_with_interaction = [p for p in ranked_14d if _hot_score(p) > 0]
     pop_posts, pop_count = _build_pop_posts_with_reason(
         boost_posts=boost_posts,
         eligible_3d_posts=eligible_3d,
-        eligible_14d_posts=eligible_14d,
+        ranked_14d_posts=ranked_14d_with_interaction,
         latest_posts=latest_posts,
         take=pop_take,
     )

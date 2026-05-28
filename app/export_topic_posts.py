@@ -337,7 +337,7 @@ def _build_pop_posts_with_reason(
     *,
     boost_posts: List[Dict[str, Any]],
     eligible_3d_posts: List[Dict[str, Any]],
-    eligible_14d_posts: List[Dict[str, Any]],
+    ranked_14d_posts: List[Dict[str, Any]],
     latest_posts: List[Dict[str, Any]],
     take: int,
 ) -> Tuple[List[Dict[str, Any]], int]:
@@ -363,12 +363,12 @@ def _build_pop_posts_with_reason(
         _append_unique_posts_with_reason(
             out,
             seen,
-            eligible_14d_posts,
+            ranked_14d_posts,
             take=take,
             reason="14d-score",
         )
 
-    has_interaction_posts = bool(eligible_3d_posts or eligible_14d_posts)
+    has_interaction_posts = bool(eligible_3d_posts or ranked_14d_posts)
     if len(out) < take and not has_interaction_posts:
         _append_unique_posts_with_reason(
             out,
@@ -381,7 +381,7 @@ def _build_pop_posts_with_reason(
     ordered_seen: Set[str] = set()
     total_available = 0
     candidate_pools = (
-        (boost_posts, eligible_3d_posts, eligible_14d_posts)
+        (boost_posts, eligible_3d_posts, ranked_14d_posts)
         if has_interaction_posts
         else (boost_posts, latest_posts[:10])
     )
@@ -575,11 +575,11 @@ def _build_per_topic_result(
             client=client,
         )
     ranked_14d = _rank_hot_posts(hot_14d_posts) if hot_14d_posts else []
-    eligible_14d = [p for p in ranked_14d if _hot_score(p) >= threshold]
+    ranked_14d_with_interaction = [p for p in ranked_14d if _hot_score(p) > 0]
     pop_posts, pop_count = _build_pop_posts_with_reason(
         boost_posts=boost_posts,
         eligible_3d_posts=eligible_3d,
-        eligible_14d_posts=eligible_14d,
+        ranked_14d_posts=ranked_14d_with_interaction,
         latest_posts=latest_posts,
         take=pop_take,
     )
