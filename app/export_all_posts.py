@@ -26,7 +26,7 @@ from .keystone_gql import execute_gql
 def _where_all_posts_status(status_token: str, *, with_poll: bool = False, with_since: bool = False) -> str:
     parts = [f"status: {{ equals: {status_token} }}"]
     if with_since:
-        parts.append("createdAt: { gte: $since }")
+        parts.append("published_date: { gte: $since }")
     if with_poll:
         parts.append("NOT: [{ poll: null }]")
     return "\n      ".join(parts)
@@ -40,7 +40,7 @@ query AllPostsLatest($take: Int!) {{
     where: {{
       {w}
     }}
-    orderBy: [{{ createdAt: desc }}]
+    orderBy: [{{ published_date: desc }}, {{ createdAt: desc }}]
     take: $take
   ) {{
 {_POST_CARD_SELECTION}
@@ -60,7 +60,7 @@ query AllPostsPolls($take: Int!) {{
     where: {{
       {w}
     }}
-    orderBy: [{{ createdAt: desc }}]
+    orderBy: [{{ published_date: desc }}, {{ createdAt: desc }}]
     take: $take
   ) {{
 {_POST_CARD_SELECTION}
@@ -80,7 +80,7 @@ query AllPostsHotWindow($take: Int!, $skip: Int!, $since: DateTime!) {{
     where: {{
       {w}
     }}
-    orderBy: [{{ createdAt: desc }}]
+    orderBy: [{{ published_date: desc }}, {{ createdAt: desc }}]
     skip: $skip
     take: $take
   ) {{
@@ -102,7 +102,7 @@ query AllPostsBoost($take: Int!) {{
       {w}
       isBoost: {{ equals: true }}
     }}
-    orderBy: [{{ createdAt: desc }}]
+    orderBy: [{{ published_date: desc }}, {{ createdAt: desc }}]
     take: $take
   ) {{
 {_POST_CARD_SELECTION}
