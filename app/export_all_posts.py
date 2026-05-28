@@ -8,7 +8,7 @@ from .export_topic_posts import (
     _POST_CARD_SELECTION,
     _append_count_fields,
     _build_pop_posts_with_reason,
-    _fetch_posts_in_pages,
+    _fetch_all_posts_in_pages,
     _hot_score,
     _hot_threshold,
     _max_take_per_request,
@@ -179,10 +179,9 @@ def export_all_posts_to_gcs(
     polls_posts = polls_data.get("posts") or []
     polls_count = _to_int(polls_data.get("postsCount"))
 
-    hot_3d_posts, _hot_3d_count = _fetch_posts_in_pages(
+    hot_3d_posts, _hot_3d_count = _fetch_all_posts_in_pages(
         q_hot_window,
         {"since": since_3d},
-        total_limit=hot_scan_take,
     )
 
     boost_data = execute_gql(q_boost, {"take": pop_take})
@@ -194,10 +193,9 @@ def export_all_posts_to_gcs(
 
     need_14d = len(boost_posts) + len(eligible_3d) < pop_take
     if need_14d:
-        hot_14d_posts, _hot_14d_count = _fetch_posts_in_pages(
+        hot_14d_posts, _hot_14d_count = _fetch_all_posts_in_pages(
             q_hot_window,
             {"since": since_14d},
-            total_limit=hot_scan_take,
         )
     ranked_14d = _rank_hot_posts(hot_14d_posts) if hot_14d_posts else []
     eligible_14d = [p for p in ranked_14d if _hot_score(p) >= threshold]
