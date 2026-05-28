@@ -459,6 +459,39 @@ def _fetch_posts_in_pages(
     return posts[:total_limit], posts_count
 
 
+def _fetch_all_posts_in_pages(
+    query: str,
+    variables: Dict[str, Any],
+    *,
+    client: Any = None,
+) -> Tuple[List[Dict[str, Any]], int]:
+    page_size = _max_take_per_request()
+    skip = 0
+    posts: List[Dict[str, Any]] = []
+    posts_count = 0
+
+    while True:
+        data = execute_gql(
+            query,
+            {
+                **variables,
+                "skip": skip,
+                "take": page_size,
+            },
+            client=client,
+        )
+        page_posts = data.get("posts") or []
+        posts_count = _to_int(data.get("postsCount"))
+        if not page_posts:
+            break
+        posts.extend(page_posts)
+        skip += len(page_posts)
+        if len(page_posts) < page_size:
+            break
+
+    return posts, posts_count
+
+
 def _topic_payload(
     generated_at: str,
     topic_row: Dict[str, Any],
@@ -521,10 +554,9 @@ def _build_per_topic_result(
     polls_posts = polls_data.get("posts") or []
     polls_count = _to_int(polls_data.get("postsCount"))
 
-    hot_3d_posts, _hot_3d_count = _fetch_posts_in_pages(
+    hot_3d_posts, _hot_3d_count = _fetch_all_posts_in_pages(
         q_hot_window,
         {"slug": slug, "since": since_3d},
-        total_limit=hot_scan_take,
         client=client,
     )
 
@@ -537,10 +569,9 @@ def _build_per_topic_result(
 
     need_14d = len(boost_posts) + len(eligible_3d) < pop_take
     if need_14d:
-        hot_14d_posts, _hot_14d_count = _fetch_posts_in_pages(
+        hot_14d_posts, _hot_14d_count = _fetch_all_posts_in_pages(
             q_hot_window,
             {"slug": slug, "since": since_14d},
-            total_limit=hot_scan_take,
             client=client,
         )
     ranked_14d = _rank_hot_posts(hot_14d_posts) if hot_14d_posts else []
