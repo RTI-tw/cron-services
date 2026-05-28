@@ -151,7 +151,7 @@ def _where_topic_by_slug_status(status_token: str, *, with_poll: bool = False, w
         "topics: { slug: { equals: $slug } }",
     ]
     if with_since:
-        parts.append("createdAt: { gte: $since }")
+        parts.append("published_date: { gte: $since }")
     if with_poll:
         parts.append("NOT: [{ poll: null }]")
     return "\n      ".join(parts)
@@ -165,7 +165,7 @@ query TopicLatest($slug: String!, $take: Int!) {{
     where: {{
       {w}
     }}
-    orderBy: [{{ createdAt: desc }}]
+    orderBy: [{{ published_date: desc }}, {{ createdAt: desc }}]
     take: $take
   ) {{
 {_POST_CARD_SELECTION}
@@ -185,7 +185,7 @@ query TopicPolls($slug: String!, $take: Int!) {{
     where: {{
       {w}
     }}
-    orderBy: [{{ createdAt: desc }}]
+    orderBy: [{{ published_date: desc }}, {{ createdAt: desc }}]
     take: $take
   ) {{
 {_POST_CARD_SELECTION}
@@ -205,7 +205,7 @@ query TopicHotWindow($slug: String!, $take: Int!, $skip: Int!, $since: DateTime!
     where: {{
       {w}
     }}
-    orderBy: [{{ createdAt: desc }}]
+    orderBy: [{{ published_date: desc }}, {{ createdAt: desc }}]
     skip: $skip
     take: $take
   ) {{
@@ -227,7 +227,7 @@ query TopicBoost($slug: String!, $take: Int!) {{
       {w}
       isBoost: {{ equals: true }}
     }}
-    orderBy: [{{ createdAt: desc }}]
+    orderBy: [{{ published_date: desc }}, {{ createdAt: desc }}]
     take: $take
   ) {{
 {_POST_CARD_SELECTION}
