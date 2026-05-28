@@ -35,6 +35,9 @@ app = FastAPI(title="Forum Cron Services", version="0.1.0")
 _CACHE_CONTROL_DESCRIPTION = schemas.ExportContentsToGcsRequest.model_fields[
     "cache_control_seconds"
 ].description
+_CACHE_CONTROL_DEFAULT_SECONDS = schemas.ExportContentsToGcsRequest.model_fields[
+    "cache_control_seconds"
+].default
 
 
 def _export_contents_query(
@@ -53,7 +56,7 @@ def _export_contents_query(
         description=schemas.ExportContentsToGcsRequest.model_fields["slug"].description,
     ),
     cache_control_seconds: Optional[int] = Query(
-        default=None,
+        default=_CACHE_CONTROL_DEFAULT_SECONDS,
         ge=0,
         description=_CACHE_CONTROL_DESCRIPTION,
     ),
@@ -92,7 +95,7 @@ def _export_topic_posts_query(
         ].description,
     ),
     cache_control_seconds: Optional[int] = Query(
-        default=None,
+        default=_CACHE_CONTROL_DEFAULT_SECONDS,
         ge=0,
         description=_CACHE_CONTROL_DESCRIPTION,
     ),
@@ -112,7 +115,7 @@ def _export_home_sections_query(
         description=schemas.ExportHomeSectionsToGcsRequest.model_fields["prefix"].description,
     ),
     cache_control_seconds: Optional[int] = Query(
-        default=None,
+        default=_CACHE_CONTROL_DEFAULT_SECONDS,
         ge=0,
         description=_CACHE_CONTROL_DESCRIPTION,
     ),
@@ -129,7 +132,7 @@ def _export_sidebar_topics_query(
         description=schemas.ExportSidebarTopicsToGcsRequest.model_fields["prefix"].description,
     ),
     cache_control_seconds: Optional[int] = Query(
-        default=None,
+        default=_CACHE_CONTROL_DEFAULT_SECONDS,
         ge=0,
         description=_CACHE_CONTROL_DESCRIPTION,
     ),
@@ -146,7 +149,7 @@ def _export_forbidden_keywords_query(
         description=schemas.ExportForbiddenKeywordsToGcsRequest.model_fields["prefix"].description,
     ),
     cache_control_seconds: Optional[int] = Query(
-        default=None,
+        default=_CACHE_CONTROL_DEFAULT_SECONDS,
         ge=0,
         description=_CACHE_CONTROL_DESCRIPTION,
     ),
@@ -169,7 +172,7 @@ def _export_ads_query(
         description=schemas.ExportAdsToGcsRequest.model_fields["take"].description,
     ),
     cache_control_seconds: Optional[int] = Query(
-        default=None,
+        default=_CACHE_CONTROL_DEFAULT_SECONDS,
         ge=0,
         description=_CACHE_CONTROL_DESCRIPTION,
     ),
@@ -211,7 +214,7 @@ def _export_posts_sitemap_query(
         description=schemas.ExportPostsSitemapToGcsRequest.model_fields["max_urls_per_file"].description,
     ),
     cache_control_seconds: Optional[int] = Query(
-        default=None,
+        default=_CACHE_CONTROL_DEFAULT_SECONDS,
         ge=0,
         description=_CACHE_CONTROL_DESCRIPTION,
     ),
@@ -250,7 +253,7 @@ def _export_topics_daily_stats_query(
         ].description,
     ),
     cache_control_seconds: Optional[int] = Query(
-        default=None,
+        default=_CACHE_CONTROL_DEFAULT_SECONDS,
         ge=0,
         description=_CACHE_CONTROL_DESCRIPTION,
     ),
@@ -286,7 +289,7 @@ def _export_curated_posts_query(
         description=schemas.ExportCuratedPostsToGcsRequest.model_fields["scan_multiplier"].description,
     ),
     cache_control_seconds: Optional[int] = Query(
-        default=None,
+        default=_CACHE_CONTROL_DEFAULT_SECONDS,
         ge=0,
         description=_CACHE_CONTROL_DESCRIPTION,
     ),
@@ -322,7 +325,7 @@ def _export_all_posts_query(
         description=schemas.ExportAllPostsToGcsRequest.model_fields["scan_multiplier"].description,
     ),
     cache_control_seconds: Optional[int] = Query(
-        default=None,
+        default=_CACHE_CONTROL_DEFAULT_SECONDS,
         ge=0,
         description=_CACHE_CONTROL_DESCRIPTION,
     ),
