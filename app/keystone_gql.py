@@ -5,6 +5,8 @@ from typing import Any, Dict, Optional
 
 import httpx
 
+from .gcp_auth import invoker_auth_headers
+
 _client: Optional[httpx.Client] = None
 _thread_local = threading.local()
 
@@ -57,7 +59,14 @@ def execute_gql(
     client: Optional[httpx.Client] = None,
 ) -> Dict[str, Any]:
     c = client or _get_client()
-    resp = c.post("", json={"query": query, "variables": variables or {}})
+    # Per-request so the (cached) Google ID token can refresh on expiry. Sent as
+    # X-Serverless-Authorization to authenticate to the locked GQL Cloud Run service.
+    endpoint = (os.getenv("KEYSTONE_GQL_ENDPOINT") or "").strip()
+    resp = c.post(
+        "",
+        json={"query": query, "variables": variables or {}},
+        headers=invoker_auth_headers(endpoint),
+    )
     try:
         payload = resp.json()
     except json.JSONDecodeError as e:
