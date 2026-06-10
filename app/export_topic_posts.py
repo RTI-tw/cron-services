@@ -153,7 +153,8 @@ def _where_topic_by_slug_status(status_token: str, *, with_poll: bool = False, w
     if with_since:
         parts.append("published_date: { gte: $since }")
     if with_poll:
-        parts.append("NOT: [{ poll: null }]")
+        # Post.poll is a to-many relation; "has a poll" = at least one related poll.
+        parts.append("poll: { some: {} }")
     return "\n      ".join(parts)
 
 
@@ -248,10 +249,11 @@ def _to_int(v: Any) -> int:
 
 
 def _poll_participants(post: Dict[str, Any]) -> int:
-    poll = post.get("poll")
-    if not isinstance(poll, dict):
+    # Post.poll is a to-many relation: sum participants across all polls on the post.
+    polls = post.get("poll")
+    if not isinstance(polls, list):
         return 0
-    return _to_int(poll.get("totalVotes"))
+    return sum(_to_int(p.get("totalVotes")) for p in polls if isinstance(p, dict))
 
 
 def _hot_score(post: Dict[str, Any]) -> int:

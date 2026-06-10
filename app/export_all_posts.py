@@ -28,7 +28,8 @@ def _where_all_posts_status(status_token: str, *, with_poll: bool = False, with_
     if with_since:
         parts.append("published_date: { gte: $since }")
     if with_poll:
-        parts.append("NOT: [{ poll: null }]")
+        # Post.poll is a to-many relation; "has a poll" = at least one related poll.
+        parts.append("poll: { some: {} }")
     return "\n      ".join(parts)
 
 
