@@ -210,7 +210,20 @@ def _validate_publish_status(publish_status: str) -> str:
 
 
 def _fetch_rss_items(rss_url: str, max_items: int) -> List[RssItem]:
-    with httpx.Client(timeout=httpx.Timeout(30.0, connect=10.0)) as client:
+    user_agent = (
+        os.getenv("RTI_RSS_USER_AGENT")
+        or "Mozilla/5.0 (compatible; RtiTalkRSSImporter/1.0; +https://www.rti.org.tw/)"
+    ).strip()
+    headers = {
+        "User-Agent": user_agent,
+        "Accept": "application/rss+xml, application/xml, text/xml, */*;q=0.8",
+        "Accept-Language": "zh-TW,zh;q=0.9,en;q=0.5",
+    }
+    with httpx.Client(
+        headers=headers,
+        follow_redirects=True,
+        timeout=httpx.Timeout(30.0, connect=10.0),
+    ) as client:
         resp = client.get(rss_url)
         resp.raise_for_status()
     return _parse_rss(resp.text, max_items=max_items)
