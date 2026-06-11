@@ -52,6 +52,7 @@ _POST_CARD_SELECTION = f"""
     }}
     isEditorChoice
     isLifeGuide
+    isRtiChoice
     topics {{
       id
       name
