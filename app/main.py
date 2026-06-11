@@ -1,8 +1,11 @@
 import asyncio
+import hmac
+import os
 import logging
 from typing import Annotated, Optional
 
-from fastapi import Depends, FastAPI, HTTPException, Query
+import httpx
+from fastapi import Depends, FastAPI, Header, HTTPException, Query
 
 from . import schemas
 from .export_ads import export_active_ads_to_gcs
@@ -27,10 +30,14 @@ from .export_posts_sitemap import export_posts_sitemap_to_gcs
 from .export_sidebar_topics import export_sidebar_topics_to_gcs
 from .export_topic_posts import export_topic_pops_to_gcs, export_topic_posts_to_gcs
 from .export_topics_daily_stats import export_topics_daily_stats_to_gcs
+from .import_rti_rss import import_rti_rss_posts
 from .retry_missing_translations import retry_missing_translations
 
 logger = logging.getLogger(__name__)
 app = FastAPI(title="Forum Cron Services", version="0.1.0")
+
+_EGRESS_IP_PROVIDER = "api.ipify.org"
+_EGRESS_IP_URL = "https://api.ipify.org?format=json"
 
 _CACHE_CONTROL_DESCRIPTION = schemas.ExportContentsToGcsRequest.model_fields[
     "cache_control_seconds"
@@ -377,6 +384,43 @@ def _retry_missing_translations_query(
     )
 
 
+def _import_rti_rss_posts_query(
+    rss_url: str = Query(
+        default="",
+        description=schemas.ImportRtiRssPostsRequest.model_fields["rss_url"].description,
+    ),
+    max_items: int = Query(
+        default=50,
+        ge=1,
+        le=200,
+        description=schemas.ImportRtiRssPostsRequest.model_fields["max_items"].description,
+    ),
+    dry_run: bool = Query(
+        default=True,
+        description=schemas.ImportRtiRssPostsRequest.model_fields["dry_run"].description,
+    ),
+    publish_status: str = Query(
+        default="pending",
+        description=schemas.ImportRtiRssPostsRequest.model_fields[
+            "publish_status"
+        ].description,
+    ),
+    author_member_id: str = Query(
+        default="",
+        description=schemas.ImportRtiRssPostsRequest.model_fields[
+            "author_member_id"
+        ].description,
+    ),
+) -> schemas.ImportRtiRssPostsRequest:
+    return schemas.ImportRtiRssPostsRequest(
+        rss_url=rss_url,
+        max_items=max_items,
+        dry_run=dry_run,
+        publish_status=publish_status,
+        author_member_id=author_member_id,
+    )
+
+
 def _runtime_error_http_detail(exc: RuntimeError) -> dict:
     """讓呼叫端與 Cloud Logging 能快速分辨 503 原因。"""
     msg = str(exc)
@@ -386,6 +430,37 @@ def _runtime_error_http_detail(exc: RuntimeError) -> dict:
     elif "GraphQL error" in msg:
         code = "graphql_error"
     return {"code": code, "message": msg}
+
+
+def _assert_cron_trigger_allowed(dry_run: bool, x_cron_token: str) -> None:
+    if dry_run:
+        return
+    expected = (os.getenv("CRON_SERVICE_TRIGGER_TOKEN") or "").strip()
+    if not expected:
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "code": "cron_trigger_token_missing",
+                "message": "CRON_SERVICE_TRIGGER_TOKEN 未設定，拒絕正式寫入",
+            },
+        )
+    if not hmac.compare_digest(x_cron_token, expected):
+        raise HTTPException(status_code=403, detail="cron trigger token invalid")
+
+
+def _fetch_egress_ip() -> dict[str, str]:
+    with httpx.Client(
+        follow_redirects=True,
+        timeout=httpx.Timeout(10.0, connect=5.0),
+    ) as client:
+        response = client.get(_EGRESS_IP_URL)
+        response.raise_for_status()
+        data = response.json()
+
+    ip = str(data.get("ip") or "").strip()
+    if not ip:
+        raise RuntimeError("egress IP provider did not return an IP")
+    return {"ip": ip, "provider": _EGRESS_IP_PROVIDER}
 
 
 @app.get("/export/contents-to-gcs")
@@ -884,6 +959,65 @@ async def maintenance_retry_missing_translations(
         raise HTTPException(status_code=503, detail=_runtime_error_http_detail(e)) from e
     except Exception as e:  # noqa: BLE001
         logger.exception("maintenance/retry-missing-translations failed: %s", e)
+        raise HTTPException(status_code=502, detail=str(e)) from e
+
+
+@app.get("/import/rti-rss-posts")
+async def import_rti_rss_posts_endpoint(
+    body: Annotated[
+        schemas.ImportRtiRssPostsRequest,
+        Depends(_import_rti_rss_posts_query),
+    ],
+    x_cron_token: str = Header(default="", alias="X-Cron-Token"),
+):
+    """
+    讀取央廣 RSS，依 CMS 的 RSS 關鍵字篩選新聞，並可建立為論壇文章。
+    """
+    try:
+        _assert_cron_trigger_allowed(body.dry_run, x_cron_token)
+        return await asyncio.to_thread(
+            import_rti_rss_posts,
+            rss_url=body.rss_url,
+            max_items=body.max_items,
+            dry_run=body.dry_run,
+            publish_status=body.publish_status,
+            author_member_id=body.author_member_id,
+        )
+    except HTTPException:
+        raise
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except RuntimeError as e:
+        logger.warning("import/rti-rss-posts RuntimeError: %s", e)
+        raise HTTPException(status_code=503, detail=_runtime_error_http_detail(e)) from e
+    except httpx.HTTPError as e:
+        logger.warning("import/rti-rss-posts HTTPError: %s", e)
+        raise HTTPException(status_code=502, detail=str(e)) from e
+    except Exception as e:  # noqa: BLE001
+        logger.exception("import/rti-rss-posts failed: %s", e)
+        raise HTTPException(status_code=502, detail=str(e)) from e
+
+
+@app.get("/debug/egress-ip")
+async def debug_egress_ip(
+    x_cron_token: str = Header(default="", alias="X-Cron-Token"),
+):
+    """
+    回報目前 Cloud Run instance 對外連線看到的出口 IP。
+    """
+    try:
+        _assert_cron_trigger_allowed(False, x_cron_token)
+        return await asyncio.to_thread(_fetch_egress_ip)
+    except HTTPException:
+        raise
+    except RuntimeError as e:
+        logger.warning("debug/egress-ip RuntimeError: %s", e)
+        raise HTTPException(status_code=502, detail=str(e)) from e
+    except httpx.HTTPError as e:
+        logger.warning("debug/egress-ip HTTPError: %s", e)
+        raise HTTPException(status_code=502, detail=str(e)) from e
+    except Exception as e:  # noqa: BLE001
+        logger.exception("debug/egress-ip failed: %s", e)
         raise HTTPException(status_code=502, detail=str(e)) from e
 
 
