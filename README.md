@@ -17,12 +17,16 @@ pip install -r requirements.txt
 
 - `GCS_BUCKET`：上傳 JSON 的 GCS bucket（必填）
 - `KEYSTONE_GQL_ENDPOINT`：Keystone GraphQL URL（必填）
-- `KEYSTONE_AUTH_TOKEN`：選填，Bearer token
+- `KEYSTONE_AUTH_TOKEN`：選填，Bearer token；若要執行 `/import/rti-rss-posts?dry_run=false` 寫入 CMS，需與 forum-cms 的 `CRON_SERVICES_GQL_WRITE_TOKEN` 相同。
 - `GCP_PROJECT_ID`：選填，便於日後擴充
 - `GQL_POST_MAX_TAKE`：選填，預設 `100`。Keystone 對 `Post` 的 `graphql.maximumTake` 常有上限（例如 100）；匯出查詢的 `take` 會受此上限限制，避免 GraphQL **HTTP 400**。
 - `HOT_SCORE_THRESHOLD`：選填，預設 `5`。`-pop.json` 在「3天內」綜合分數達到此門檻才視為熱門。
 - `SITE_BASE_URL`：選填，sitemap 預設網站 base URL；也可改用 `PUBLIC_SITE_URL`、`FRONTEND_BASE_URL` 或 `BASE_URL`。
 - `MESSAGE_SERVICES_URL`：選填，`/maintenance/retry-missing-translations` 呼叫 message-services 的根網址；也可改用 `MESSAGE_SERVICES_BASE_URL`。
+- `RTI_RSS_FEED_URL`：選填，`/import/rti-rss-posts` 預設讀取的央廣 RSS URL；也可由 query 參數 `rss_url` 覆蓋。
+- `RTI_RSS_ALLOWED_HOSTS`：選填，允許抓取的 RSS host，逗號分隔；預設 `www.rti.org.tw,rti.org.tw`。
+- `RTI_RSS_AUTHOR_MEMBER_ID`：選填，RSS 自動發文時使用的官方 `Member` id；也可由 query 參數 `author_member_id` 覆蓋。
+- `CRON_SERVICE_TRIGGER_TOKEN`：正式寫入 RSS 文章時必填；呼叫 `/import/rti-rss-posts?dry_run=false` 必須帶相同的 `X-Cron-Token` header。
 
 Cloud Run 執行身分需能寫入該 bucket（例如 `roles/storage.objectAdmin` 或最小必要權限）。
 
@@ -148,6 +152,57 @@ GET /export/sidebar-topics-to-gcs?prefix=json/sidebar
 
 ```
 GET /export/forbidden-keywords-to-gcs?prefix=json/forbidden-keywords
+```
+
+### `GET /import/rti-rss-posts`
+
+讀取央廣 RSS，向 Keystone GraphQL 查詢 CMS 後台設定的 `RSS 關鍵字`，用啟用中的關鍵字比對 RSS 新聞標題與摘要，符合條件時可建立論壇 `Post`。
+
+同時會讀取 CMS 的 `RSS 主題合併` 設定，依 RSS `<category>` 對應平台 `Topic`：
+
+- 多個 RSS 主題可分別建立 mapping，指向同一個平台主題。
+- 同篇新聞若有多個 RSS 主題，會依 RSS category 出現順序採用第一個有 mapping 的平台主題。
+- 若所有 RSS 主題都找不到 mapping，Post 主題保持空白。
+
+建立 Post 時會補齊目前 CMS 必填欄位：
+
+| Post 欄位 | 來源 |
+|------|------|
+| `title` | RSS title，超過 80 字會截短 |
+| `content` | RSS description，加上來源連結 |
+| `language` | 固定 `zh` |
+| `status` | query 參數 `publish_status`，預設 `pending` |
+| `isRtiChoice` | 固定 `true`，標記為央廣精選 |
+| `topics` | 依 CMS 的 RSS 主題合併設定連接平台主題；無 mapping 時空白 |
+| `published_date` | RSS pubDate，可解析時帶入 |
+
+Query 參數：
+
+| 參數 | 說明 |
+|------|------|
+| `rss_url` | 選填；未提供時讀取 `RTI_RSS_FEED_URL` |
+| `max_items` | 預設 `50`，最多 `200` |
+| `dry_run` | 預設 `true`，只回報符合關鍵字的新聞，不寫入 CMS；正式排程請設 `false` |
+| `publish_status` | 預設 `pending` |
+| `author_member_id` | 選填；建立 Post 時指定官方作者 Member id，未提供時讀取 `RTI_RSS_AUTHOR_MEMBER_ID` |
+
+匯入時會先用 RSS 來源連結比對既有 Post 內容：
+
+- 若該來源連結已存在，會更新既有 Post，覆蓋標題、內容、發文時間、狀態與作者。
+- 若不存在，才會建立新的 Post。
+
+安全限制：
+
+- `dry_run=false` 時必須帶 `X-Cron-Token: <CRON_SERVICE_TRIGGER_TOKEN>`。
+- `dry_run=false` 時不可用 query 參數覆蓋 `rss_url`，必須使用環境變數 `RTI_RSS_FEED_URL`。
+- RSS URL host 必須在 `RTI_RSS_ALLOWED_HOSTS` 允許清單內，預設只允許央廣網域。
+
+範例：
+
+```
+GET /import/rti-rss-posts?dry_run=true&max_items=20
+GET /import/rti-rss-posts?dry_run=false&max_items=50
+X-Cron-Token: <CRON_SERVICE_TRIGGER_TOKEN>
 ```
 
 ### `GET /export/ads-to-gcs`
@@ -314,8 +369,11 @@ GET /export/topic-pops-to-gcs?prefix=json/topics&per_topic_limit=100&post_state=
 | `life-guide-latest.json` | `isLifeGuide=true` | `createdAt desc` |
 | `life-guide-polls.json` | `isLifeGuide=true` 且 `poll != null` | `createdAt desc` |
 | `life-guide-pop.json` | `isLifeGuide=true` | 與 topic pop 相同：Boost 優先 + 3 天熱門 + 14 天熱門補滿 + 無互動時 latest fallback |
+| `rti-choice-latest.json` | `isRtiChoice=true` | `createdAt desc` |
+| `rti-choice-polls.json` | `isRtiChoice=true` 且 `poll != null` | `createdAt desc` |
+| `rti-choice-pop.json` | `isRtiChoice=true` | 與 topic pop 相同：Boost 優先 + 3 天熱門 + 14 天熱門補滿 + 無互動時 latest fallback |
 
-- **篩選**：`status`（`post_state=active` 時為 enum：`equals: published`）加上對應布林欄位 `isEditorChoice` 或 `isLifeGuide`。
+- **篩選**：`status`（`post_state=active` 時為 enum：`equals: published`）加上對應布林欄位 `isEditorChoice`、`isLifeGuide` 或 `isRtiChoice`。
 - **`posts` 內容**：與現有 topic export 一致，沿用前端 `PostCardFields` + `PhotoFields`。
 - **`postsCount`**：`latest` / `polls` 為該條件下的 `postsCount(where: …)`；`pop` 則代表最終輸出的篇數。
 - **`totalCount`**：`latest` / `polls` 為符合條件的總筆數；`pop` 為依熱門規則可用來組成結果的總篇數（去重後）。

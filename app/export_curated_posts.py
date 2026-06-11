@@ -25,6 +25,7 @@ from .keystone_gql import execute_gql
 _CURATED_GROUPS: List[Tuple[str, str, str]] = [
     ("editor-choice", "編輯精選", "isEditorChoice"),
     ("life-guide", "生活須知", "isLifeGuide"),
+    ("rti-choice", "央廣精選", "isRtiChoice"),
 ]
 
 

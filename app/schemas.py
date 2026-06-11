@@ -147,7 +147,7 @@ class ExportTopicPostsToGcsRequest(BaseModel):
 class ExportCuratedPostsToGcsRequest(BaseModel):
     prefix: str = Field(
         default="exports/curated-posts",
-        description="GCS 目錄前綴（不含時間戳）；寫入 editor-choice/life-guide 的 latest/pop/polls.json，每次覆寫",
+        description="GCS 目錄前綴（不含時間戳）；寫入 editor-choice/life-guide/rti-choice 的 latest/pop/polls.json，每次覆寫",
     )
     limit: int = Field(
         default=10,
@@ -250,4 +250,29 @@ class RetryMissingTranslationsRequest(BaseModel):
     comment_statuses: str = Field(
         default="published",
         description="Comment status 篩選，逗號分隔；傳 all 表示不篩狀態",
+    )
+
+
+class ImportRtiRssPostsRequest(BaseModel):
+    rss_url: str = Field(
+        default="",
+        description="央廣 RSS URL；未提供時讀取 RTI_RSS_FEED_URL 環境變數",
+    )
+    max_items: int = Field(
+        default=50,
+        ge=1,
+        le=200,
+        description="本次最多讀取幾則 RSS item",
+    )
+    dry_run: bool = Field(
+        default=True,
+        description="true 只回報符合關鍵字的新聞，不寫入 CMS；排程正式執行請設 false",
+    )
+    publish_status: str = Field(
+        default="pending",
+        description="建立或更新 Post 時使用的狀態，預設 pending",
+    )
+    author_member_id: str = Field(
+        default="",
+        description="選填；建立 Post 時 connect 的官方 Member id，未提供時讀取 RTI_RSS_AUTHOR_MEMBER_ID",
     )
