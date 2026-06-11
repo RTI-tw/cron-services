@@ -25,6 +25,7 @@ pip install -r requirements.txt
 - `MESSAGE_SERVICES_URL`：選填，`/maintenance/retry-missing-translations` 呼叫 message-services 的根網址；也可改用 `MESSAGE_SERVICES_BASE_URL`。
 - `RTI_RSS_FEED_URL`：選填，`/import/rti-rss-posts` 預設讀取的央廣 RSS URL；也可由 query 參數 `rss_url` 覆蓋。
 - `RTI_RSS_ALLOWED_HOSTS`：選填，允許抓取的 RSS host，逗號分隔；預設 `www.rti.org.tw,rti.org.tw`。
+- `RTI_RSS_USER_AGENT`：選填，抓取 RSS 時使用的 User-Agent；未設定時使用 RtiTalk RSS importer 預設值。
 - `RTI_RSS_AUTHOR_MEMBER_ID`：選填，RSS 自動發文時使用的官方 `Member` id；也可由 query 參數 `author_member_id` 覆蓋。
 - `CRON_SERVICE_TRIGGER_TOKEN`：正式寫入 RSS 文章時必填；呼叫 `/import/rti-rss-posts?dry_run=false` 必須帶相同的 `X-Cron-Token` header。
 
