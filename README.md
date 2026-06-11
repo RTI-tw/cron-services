@@ -206,6 +206,39 @@ GET /import/rti-rss-posts?dry_run=false&max_items=50
 X-Cron-Token: <CRON_SERVICE_TRIGGER_TOKEN>
 ```
 
+### `GET /debug/egress-ip`
+
+從 cron-services instance 內部呼叫 `https://api.ipify.org?format=json`，回報目前對外連線看到的出口 IP，方便確認 Cloud Run VPC egress / Cloud NAT 是否使用指定固定 IP。
+
+安全限制：
+
+- 必須帶 `X-Cron-Token: <CRON_SERVICE_TRIGGER_TOKEN>`。
+- 若 `CRON_SERVICE_TRIGGER_TOKEN` 未設定，會回 `503`。
+
+範例：
+
+```
+curl -H "X-Cron-Token: $CRON_SERVICE_TRIGGER_TOKEN" \
+  "https://<cron-services-url>/debug/egress-ip"
+```
+
+回應：
+
+```json
+{
+  "ip": "203.0.113.10",
+  "provider": "api.ipify.org"
+}
+```
+
+比對 Cloud NAT 綁定的固定 IP：
+
+```
+gcloud compute addresses describe cron-services-egress-ip \
+  --region=asia-east1 \
+  --format="value(address)"
+```
+
 ### `GET /export/ads-to-gcs`
 
 依目前時間匯出 active ads，寫入單一檔案 **`ads.json`**。

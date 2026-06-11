@@ -36,6 +36,9 @@ from .retry_missing_translations import retry_missing_translations
 logger = logging.getLogger(__name__)
 app = FastAPI(title="Forum Cron Services", version="0.1.0")
 
+_EGRESS_IP_PROVIDER = "api.ipify.org"
+_EGRESS_IP_URL = "https://api.ipify.org?format=json"
+
 _CACHE_CONTROL_DESCRIPTION = schemas.ExportContentsToGcsRequest.model_fields[
     "cache_control_seconds"
 ].description
@@ -443,6 +446,21 @@ def _assert_cron_trigger_allowed(dry_run: bool, x_cron_token: str) -> None:
         )
     if not hmac.compare_digest(x_cron_token, expected):
         raise HTTPException(status_code=403, detail="cron trigger token invalid")
+
+
+def _fetch_egress_ip() -> dict[str, str]:
+    with httpx.Client(
+        follow_redirects=True,
+        timeout=httpx.Timeout(10.0, connect=5.0),
+    ) as client:
+        response = client.get(_EGRESS_IP_URL)
+        response.raise_for_status()
+        data = response.json()
+
+    ip = str(data.get("ip") or "").strip()
+    if not ip:
+        raise RuntimeError("egress IP provider did not return an IP")
+    return {"ip": ip, "provider": _EGRESS_IP_PROVIDER}
 
 
 @app.get("/export/contents-to-gcs")
@@ -977,6 +995,29 @@ async def import_rti_rss_posts_endpoint(
         raise HTTPException(status_code=502, detail=str(e)) from e
     except Exception as e:  # noqa: BLE001
         logger.exception("import/rti-rss-posts failed: %s", e)
+        raise HTTPException(status_code=502, detail=str(e)) from e
+
+
+@app.get("/debug/egress-ip")
+async def debug_egress_ip(
+    x_cron_token: str = Header(default="", alias="X-Cron-Token"),
+):
+    """
+    回報目前 Cloud Run instance 對外連線看到的出口 IP。
+    """
+    try:
+        _assert_cron_trigger_allowed(False, x_cron_token)
+        return await asyncio.to_thread(_fetch_egress_ip)
+    except HTTPException:
+        raise
+    except RuntimeError as e:
+        logger.warning("debug/egress-ip RuntimeError: %s", e)
+        raise HTTPException(status_code=502, detail=str(e)) from e
+    except httpx.HTTPError as e:
+        logger.warning("debug/egress-ip HTTPError: %s", e)
+        raise HTTPException(status_code=502, detail=str(e)) from e
+    except Exception as e:  # noqa: BLE001
+        logger.exception("debug/egress-ip failed: %s", e)
         raise HTTPException(status_code=502, detail=str(e)) from e
 
 
