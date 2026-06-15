@@ -13,7 +13,7 @@ def _client_headers() -> Dict[str, str]:
     headers = {"Content-Type": "application/json"}
     token = (os.getenv("KEYSTONE_AUTH_TOKEN") or "").strip()
     if token:
-        headers["Authorization"] = f"Bearer {token}"
+        headers["X-Cron-Service-Token"] = token
     return headers
 
 

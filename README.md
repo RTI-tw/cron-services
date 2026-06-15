@@ -17,7 +17,7 @@ pip install -r requirements.txt
 
 - `GCS_BUCKET`：上傳 JSON 的 GCS bucket（必填）
 - `KEYSTONE_GQL_ENDPOINT`：Keystone GraphQL URL（必填）
-- `KEYSTONE_AUTH_TOKEN`：選填，Bearer token；若要執行 `/import/rti-rss-posts?dry_run=false` 寫入 CMS，需與 forum-cms 的 `CRON_SERVICES_GQL_WRITE_TOKEN` 相同。
+- `KEYSTONE_AUTH_TOKEN`：選填，cron-services 會透過 `X-Cron-Service-Token` 傳送此 token；若要執行 `/import/rti-rss-posts?dry_run=false` 寫入 CMS，需與 forum-cms 的 `CRON_SERVICES_GQL_WRITE_TOKEN` 相同。
 - `GCP_PROJECT_ID`：選填，便於日後擴充
 - `GQL_POST_MAX_TAKE`：選填，預設 `100`。Keystone 對 `Post` 的 `graphql.maximumTake` 常有上限（例如 100）；匯出查詢的 `take` 會受此上限限制，避免 GraphQL **HTTP 400**。
 - `HOT_SCORE_THRESHOLD`：選填，預設 `5`。`-pop.json` 在「3天內」綜合分數達到此門檻才視為熱門。
