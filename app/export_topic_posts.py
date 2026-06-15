@@ -53,6 +53,9 @@ _POST_CARD_SELECTION = f"""
     isEditorChoice
     isLifeGuide
     isRtiChoice
+    events {{
+      slug
+    }}
     topics {{
       id
       name
