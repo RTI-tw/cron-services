@@ -226,14 +226,14 @@ def _build_home_payloads(*, include: Set[str]) -> Tuple[Dict[str, Dict[str, Any]
         pop_polls_data = execute_gql(
             _POP_POLLS_QUERY,
             {
-                "take": 1,
+                "take": 3,
                 "skip": 0,
                 "where": {"expiresAt": {"gt": now_iso}},
                 "orderBy": [{"totalVotes": "desc"}],
             },
         )
         payloads["pop-polls.json"] = pop_polls_data
-        meta["pop_polls_take"] = 1
+        meta["pop_polls_take"] = 3
 
     return payloads, meta
 
