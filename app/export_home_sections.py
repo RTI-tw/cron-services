@@ -217,10 +217,10 @@ def _build_home_payloads(*, include: Set[str]) -> Tuple[Dict[str, Dict[str, Any]
     if "editor-choices" in include:
         editor_choices_data = execute_gql(
             _EDITOR_CHOICES_QUERY,
-            {"orderBy": [{"sortOrder": "asc"}], "take": 4, "skip": 0},
+            {"orderBy": [{"sortOrder": "asc"}], "take": 40, "skip": 0},
         )
         payloads["editor-choices.json"] = editor_choices_data
-        meta["editor_choices_take"] = 4
+        meta["editor_choices_take"] = 40
 
     if "pop-polls" in include:
         pop_polls_data = execute_gql(
