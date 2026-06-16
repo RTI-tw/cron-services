@@ -22,6 +22,7 @@ from .export_curated_posts import (
 )
 from .export_forbidden_keywords import export_forbidden_keywords_to_gcs
 from .export_home_sections import (
+    export_home_curated_images_to_gcs,
     export_home_editor_choices_to_gcs,
     export_home_pop_polls_to_gcs,
     export_home_sections_to_gcs,
@@ -548,7 +549,7 @@ async def export_home_sections(
     ],
 ):
     """
-    匯出首頁區塊（footer / editor-choices / pop-polls）JSON 並上傳 GCS。
+    匯出首頁區塊（footer / editor-choices / pop-polls / curated-images）JSON 並上傳 GCS。
     """
     try:
         return await asyncio.to_thread(
@@ -589,6 +590,32 @@ async def export_home_editor_choices(
         raise HTTPException(status_code=503, detail=_runtime_error_http_detail(e)) from e
     except Exception as e:  # noqa: BLE001
         logger.exception("export/home-editor-choices-to-gcs failed: %s", e)
+        raise HTTPException(status_code=502, detail=str(e)) from e
+
+
+@app.get("/export/home-curated-images-to-gcs")
+async def export_home_curated_images(
+    body: Annotated[
+        schemas.ExportHomeSectionsToGcsRequest,
+        Depends(_export_home_sections_query),
+    ],
+):
+    """
+    只輸出首頁策展圖片 curated-images.json（熱門投票下方），方便獨立排程。
+    """
+    try:
+        return await asyncio.to_thread(
+            export_home_curated_images_to_gcs,
+            prefix=body.prefix,
+            cache_control_seconds=body.cache_control_seconds,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except RuntimeError as e:
+        logger.warning("export/home-curated-images-to-gcs RuntimeError: %s", e)
+        raise HTTPException(status_code=503, detail=_runtime_error_http_detail(e)) from e
+    except Exception as e:  # noqa: BLE001
+        logger.exception("export/home-curated-images-to-gcs failed: %s", e)
         raise HTTPException(status_code=502, detail=str(e)) from e
 
 
