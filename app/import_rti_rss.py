@@ -195,8 +195,19 @@ def _load_rss_url(rss_url: str, *, allow_override: bool) -> str:
     return url
 
 
-def _load_author_member_id(author_member_id: str) -> str:
-    return (author_member_id or os.getenv("RTI_RSS_AUTHOR_MEMBER_ID") or "").strip()
+def _integer_id(value: Any, field_name: str) -> Optional[int]:
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    try:
+        return int(raw)
+    except ValueError as exc:
+        raise ValueError(f"{field_name} 必須是整數 ID") from exc
+
+
+def _load_author_member_id(author_member_id: str) -> Optional[int]:
+    value = author_member_id or os.getenv("RTI_RSS_AUTHOR_MEMBER_ID") or ""
+    return _integer_id(value, "RTI_RSS_AUTHOR_MEMBER_ID")
 
 
 def _validate_publish_status(publish_status: str) -> str:
@@ -361,8 +372,8 @@ def _build_post_data(
     item: RssItem,
     matched: Sequence[str],
     publish_status: str,
-    author_member_id: str,
-    topic_id: str = "",
+    author_member_id: Optional[int],
+    topic_id: Optional[int] = None,
     *,
     for_update: bool = False,
 ) -> Dict[str, Any]:
@@ -390,8 +401,8 @@ def _create_post(
     item: RssItem,
     matched: Sequence[str],
     publish_status: str,
-    author_member_id: str,
-    topic_id: str,
+    author_member_id: Optional[int],
+    topic_id: Optional[int],
 ) -> Dict[str, Any]:
     data = _build_post_data(
         item,
@@ -409,11 +420,11 @@ def _update_post(
     item: RssItem,
     matched: Sequence[str],
     publish_status: str,
-    author_member_id: str,
-    topic_id: str,
+    author_member_id: Optional[int],
+    topic_id: Optional[int],
 ) -> Dict[str, Any]:
-    post_id = str(existing_post.get("id") or "").strip()
-    if not post_id:
+    post_id = _integer_id(existing_post.get("id"), "Post id")
+    if post_id is None:
         raise RuntimeError("既有 Post 缺少 id，無法更新")
     data = _build_post_data(
         item,
@@ -434,13 +445,13 @@ def _post_content_is_unchanged(
     existing_post: Dict[str, Any],
     item: RssItem,
     matched: Sequence[str],
-    topic_id: str,
+    topic_id: Optional[int],
 ) -> bool:
     existing_topic = existing_post.get("topics")
     existing_topic_id = (
-        str(existing_topic.get("id") or "").strip()
+        _integer_id(existing_topic.get("id"), "Topic id")
         if isinstance(existing_topic, dict)
-        else ""
+        else None
     )
     return (
         str(existing_post.get("title") or "") == _trim_title(item.title)
@@ -475,7 +486,11 @@ def import_rti_rss_posts(
         if not matched:
             continue
         mapped_topic = _mapped_topic(item, topic_mappings)
-        topic_id = mapped_topic["id"] if mapped_topic else ""
+        topic_id = (
+            _integer_id(mapped_topic.get("id"), "Topic id")
+            if mapped_topic
+            else None
+        )
 
         title = _trim_title(item.title)
         matched_payload = {
