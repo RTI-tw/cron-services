@@ -38,11 +38,17 @@ query GetActiveAds($where: AdWhereInput! = {}, $take: Int) {
     image {
       ...PhotoFields
     }
+    mobileImage {
+      ...PhotoFields
+    }
     slides(orderBy: [{ sortOrder: asc }]) {
       id
       sortOrder
       linkUrl
       image {
+        ...PhotoFields
+      }
+      mobileImage {
         ...PhotoFields
       }
     }
