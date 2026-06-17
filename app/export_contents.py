@@ -5,6 +5,7 @@ from google.cloud import storage
 
 from .config import get_settings
 from .export_topic_posts import _apply_cache_control
+from .json_payload import rewrite_gcs_public_urls
 from .keystone_gql import execute_gql
 
 _PHOTO_FIELDS = """
@@ -112,7 +113,12 @@ def export_all_contents_to_gcs(
         stem = f"{file_stem}.json"
         object_path = f"{base_dir}/{stem}" if base_dir else stem
 
-        payload = json.dumps(row, ensure_ascii=False, indent=2)
+        payload = rewrite_gcs_public_urls(
+            row,
+            bucket_name=bucket_name,
+            web_url_base=settings.web_url_base,
+        )
+        payload = json.dumps(payload, ensure_ascii=False, indent=2)
         blob = bucket.blob(object_path)
         _apply_cache_control(blob, cache_control_seconds)
         blob.upload_from_string(payload, content_type="application/json; charset=utf-8")

@@ -19,6 +19,7 @@ pip install -r requirements.txt
 - `KEYSTONE_GQL_ENDPOINT`：Keystone GraphQL URL（必填）
 - `KEYSTONE_AUTH_TOKEN`：選填，Bearer token；若要執行 `/import/rti-rss-posts?dry_run=false` 寫入 CMS，需與 forum-cms 的 `CRON_SERVICES_GQL_WRITE_TOKEN` 相同。
 - `GCP_PROJECT_ID`：選填，便於日後擴充
+- `WEB_URL_BASE`：選填；設定後，輸出 JSON payload 裡所有巢狀字串值若為 `https://storage.googleapis.com/{GCS_BUCKET}/...`，會改寫成 `{WEB_URL_BASE}/...`。
 - `GQL_POST_MAX_TAKE`：選填，預設 `100`。Keystone 對 `Post` 的 `graphql.maximumTake` 常有上限（例如 100）；匯出查詢的 `take` 會受此上限限制，避免 GraphQL **HTTP 400**。
 - `HOT_SCORE_THRESHOLD`：選填，預設 `5`。`-pop.json` 在「3天內」綜合分數達到此門檻才視為熱門。
 - `SITE_BASE_URL`：選填，sitemap 預設網站 base URL；也可改用 `PUBLIC_SITE_URL`、`FRONTEND_BASE_URL` 或 `BASE_URL`。
@@ -286,7 +287,7 @@ GET /export/posts-sitemap-to-gcs?prefix=json/sitemaps&base_url=https://example.c
 一次執行三支固定 GraphQL，並分別輸出到：
 
 - `footer.json`：`contents`（欄位只取 `id/slug/title/order/status`）
-- `editor-choices.json`：固定 `take=4`、`skip=0`、`orderBy=[{ sortOrder: asc }]`
+- `editor-choices.json`：輸出所有 `state=active` 的 picks，`orderBy=[{ sortOrder: asc }]`，以分頁抓取後合併
 - `pop-polls.json`：固定 `take=1`，條件 `expiresAt > now(ISO)`，排序 `totalVotes desc`
 
 Query 參數：
@@ -303,7 +304,7 @@ GET /export/home-sections-to-gcs?prefix=exports/home-sections/dev
 
 ### `GET /export/home-editor-choices-to-gcs`
 
-只輸出首頁四格編輯精選 **`editor-choices.json`**，方便獨立設定 scheduler。
+只輸出首頁 active 編輯精選輪播 **`editor-choices.json`**，方便獨立設定 scheduler。
 
 | 參數 | 說明 |
 |------|------|
