@@ -34,10 +34,25 @@ query GetActiveAds($where: AdWhereInput! = {}, $take: Int) {
     status
     startAt
     endAt
+    format
     image {
       ...PhotoFields
     }
+    slides(orderBy: [{ sortOrder: asc }]) {
+      id
+      sortOrder
+      linkUrl
+      image {
+        ...PhotoFields
+      }
+    }
     videoUrl
+    videoFile {
+      url
+      filename
+      filesize
+    }
+    adCode
     linkUrl
   }
 }

@@ -125,6 +125,43 @@ query GetEditorChoices(
 }
 """
 
+_HOMEPAGE_IMAGES_QUERY = """
+fragment PhotoFields on Photo {
+  id
+  name
+  resized {
+    original
+    w480
+    w800
+    w1200
+  }
+  resizedWebp {
+    original
+    w480
+    w800
+    w1200
+  }
+  urlOriginal
+  altText
+}
+
+query GetHomepageImages(
+  $where: HomepageImageWhereInput! = { status: { equals: active } }
+  $orderBy: [HomepageImageOrderByInput!]! = [{ sortOrder: asc }]
+) {
+  homepageImages(where: $where, orderBy: $orderBy) {
+    id
+    title
+    linkUrl
+    sortOrder
+    status
+    image {
+      ...PhotoFields
+    }
+  }
+}
+"""
+
 _POP_POLLS_QUERY = """
 query GetPolls(
   $where: PollWhereInput! = {}
@@ -217,10 +254,22 @@ def _build_home_payloads(*, include: Set[str]) -> Tuple[Dict[str, Dict[str, Any]
     if "editor-choices" in include:
         editor_choices_data = execute_gql(
             _EDITOR_CHOICES_QUERY,
-            {"orderBy": [{"sortOrder": "asc"}], "take": 4, "skip": 0},
+            {"orderBy": [{"sortOrder": "asc"}], "take": 40, "skip": 0},
         )
         payloads["editor-choices.json"] = editor_choices_data
-        meta["editor_choices_take"] = 4
+        meta["editor_choices_take"] = 40
+
+    if "curated-images" in include:
+        curated_images_data = execute_gql(
+            _HOMEPAGE_IMAGES_QUERY,
+            {
+                "where": {"status": {"equals": "active"}},
+                "orderBy": [{"sortOrder": "asc"}],
+            },
+        )
+        payloads["curated-images.json"] = {
+            "homepageImages": curated_images_data.get("homepageImages") or [],
+        }
 
     if "pop-polls" in include:
         pop_polls_data = execute_gql(
@@ -250,7 +299,7 @@ def export_home_sections_to_gcs(
 
     base_dir = _normalize_prefix(prefix)
     payloads, meta = _build_home_payloads(
-        include={"footer", "editor-choices", "pop-polls"},
+        include={"footer", "editor-choices", "pop-polls", "curated-images"},
     )
     uploaded_paths = _upload_home_payloads(
         prefix=prefix,
@@ -272,6 +321,26 @@ def export_home_editor_choices_to_gcs(
     cache_control_seconds: Optional[int] = None,
 ) -> Dict[str, Any]:
     payloads, meta = _build_home_payloads(include={"editor-choices"})
+    uploaded_paths = _upload_home_payloads(
+        prefix=prefix,
+        payloads=payloads,
+        cache_control_seconds=cache_control_seconds,
+    )
+    return {
+        "bucket": get_settings().gcs_bucket,
+        "prefix": _normalize_prefix(prefix),
+        "files": uploaded_paths,
+        **meta,
+    }
+
+
+def export_home_curated_images_to_gcs(
+    *,
+    prefix: str = "exports/home-sections",
+    cache_control_seconds: Optional[int] = None,
+) -> Dict[str, Any]:
+    """只輸出首頁策展圖片 curated-images.json（熱門投票下方），方便獨立排程。"""
+    payloads, meta = _build_home_payloads(include={"curated-images"})
     uploaded_paths = _upload_home_payloads(
         prefix=prefix,
         payloads=payloads,
