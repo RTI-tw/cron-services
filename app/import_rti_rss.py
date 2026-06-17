@@ -108,6 +108,25 @@ def _strip_html(value: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
+def _strip_html_preserve_paragraphs(value: str) -> str:
+    text = html.unescape(value or "").replace("\xa0", " ")
+    text = re.sub(r"(?i)<\s*br\s*/?\s*>", "\n", text)
+    text = re.sub(
+        r"(?i)</\s*(p|div|section|article|blockquote|li|ul|ol|h[1-6])\s*>",
+        "\n\n",
+        text,
+    )
+    text = re.sub(
+        r"(?i)<\s*(p|div|section|article|blockquote|li|ul|ol|h[1-6])(?:\s[^>]*)?>",
+        "\n\n",
+        text,
+    )
+    text = re.sub(r"<[^>]+>", " ", text)
+    text = re.sub(r"[ \t\r\f\v]+", " ", text)
+    text = re.sub(r" *\n *", "\n", text)
+    return re.sub(r"\n{3,}", "\n\n", text).strip()
+
+
 def _text(node: Optional[ElementTree.Element]) -> str:
     if node is None or node.text is None:
         return ""
@@ -143,7 +162,7 @@ def _parse_rss(xml_text: str, max_items: int) -> List[RssItem]:
     items: List[RssItem] = []
     for raw in raw_items[:max_items]:
         title = _strip_html(_text(_find_child(raw, ("title",))))
-        description = _strip_html(
+        description = _strip_html_preserve_paragraphs(
             _text(_find_child(raw, ("description", "summary", "content")))
         )
         link = _text(_find_child(raw, ("link",)))
