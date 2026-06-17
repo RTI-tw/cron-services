@@ -7,6 +7,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 from google.cloud import storage
 
 from .config import get_settings
+from .json_payload import rewrite_gcs_public_urls
 from .keystone_gql import execute_gql, get_thread_local_gql_client
 
 _PHOTO_FIELDS = """
@@ -527,9 +528,21 @@ def _upload_json(
     payload: Dict[str, Any],
     cache_control_seconds: Optional[int] = None,
 ) -> None:
+    settings = get_settings()
+    bucket_name = (
+        settings.gcs_bucket or str(getattr(bucket, "name", "") or "").strip()
+    )
+    payload = rewrite_gcs_public_urls(
+        payload,
+        bucket_name=bucket_name,
+        web_url_base=settings.web_url_base,
+    )
     blob = bucket.blob(path)
     _apply_cache_control(blob, cache_control_seconds)
-    blob.upload_from_string(json.dumps(payload, ensure_ascii=False, indent=2), content_type="application/json; charset=utf-8")
+    blob.upload_from_string(
+        json.dumps(payload, ensure_ascii=False, indent=2),
+        content_type="application/json; charset=utf-8",
+    )
 
 
 def _build_per_topic_result(

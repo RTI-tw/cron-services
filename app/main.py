@@ -575,7 +575,7 @@ async def export_home_editor_choices(
     ],
 ):
     """
-    只輸出首頁四格編輯精選 editor-choices.json，方便獨立排程。
+    只輸出首頁 active 編輯精選輪播 editor-choices.json，方便獨立排程。
     """
     try:
         return await asyncio.to_thread(
