@@ -91,11 +91,12 @@ fragment PhotoFields on Photo {
 }
 
 query GetEditorChoices(
+  $where: EditorChoiceWhereInput! = {}
   $orderBy: [EditorChoiceOrderByInput!]! = [{ sortOrder: asc }]
   $take: Int
   $skip: Int! = 0
 ) {
-  editorChoices(orderBy: $orderBy, take: $take, skip: $skip) {
+  editorChoices(where: $where, orderBy: $orderBy, take: $take, skip: $skip) {
     id
     sortOrder
     post {
@@ -121,7 +122,7 @@ query GetEditorChoices(
       }
     }
   }
-  editorChoicesCount
+  editorChoicesCount(where: $where)
 }
 """
 
@@ -161,6 +162,8 @@ query GetHomepageImages(
   }
 }
 """
+
+_EDITOR_CHOICES_PAGE_SIZE = 100
 
 _POP_POLLS_QUERY = """
 query GetPolls(
@@ -241,6 +244,33 @@ def _upload_home_payloads(
     return uploaded_paths
 
 
+def _fetch_active_editor_choices() -> Dict[str, Any]:
+    where = {"state": {"equals": "active"}}
+    order_by = [{"sortOrder": "asc"}]
+    skip = 0
+    choices: List[Dict[str, Any]] = []
+    total_count = 0
+
+    while True:
+        page = execute_gql(
+            _EDITOR_CHOICES_QUERY,
+            {
+                "where": where,
+                "orderBy": order_by,
+                "take": _EDITOR_CHOICES_PAGE_SIZE,
+                "skip": skip,
+            },
+        )
+        page_choices = page.get("editorChoices") or []
+        choices.extend(page_choices)
+        total_count = page.get("editorChoicesCount", total_count)
+        if not page_choices or len(choices) >= total_count:
+            break
+        skip += len(page_choices)
+
+    return {"editorChoices": choices, "editorChoicesCount": total_count}
+
+
 def _build_home_payloads(*, include: Set[str]) -> Tuple[Dict[str, Dict[str, Any]], Dict[str, Any]]:
     now_iso = datetime.now(timezone.utc).isoformat()
     payloads: Dict[str, Dict[str, Any]] = {}
@@ -252,12 +282,10 @@ def _build_home_payloads(*, include: Set[str]) -> Tuple[Dict[str, Dict[str, Any]
         meta["footer_query_variant"] = footer_query_variant
 
     if "editor-choices" in include:
-        editor_choices_data = execute_gql(
-            _EDITOR_CHOICES_QUERY,
-            {"orderBy": [{"sortOrder": "asc"}], "take": 40, "skip": 0},
-        )
+        editor_choices_data = _fetch_active_editor_choices()
         payloads["editor-choices.json"] = editor_choices_data
-        meta["editor_choices_take"] = 40
+        meta["editor_choices_filter"] = "state=active"
+        meta["editor_choices_page_size"] = _EDITOR_CHOICES_PAGE_SIZE
 
     if "curated-images" in include:
         curated_images_data = execute_gql(
