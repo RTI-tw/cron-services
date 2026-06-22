@@ -603,6 +603,10 @@ Query 參數：
 | `message_services_url` | 選填；message-services 根網址。若不傳，讀 `MESSAGE_SERVICES_URL` / `MESSAGE_SERVICES_BASE_URL` |
 | `post_statuses` | 預設 `published,pending,draft`；傳 `all` 表示不篩狀態 |
 | `comment_statuses` | 預設 `published`；傳 `all` 表示不篩狀態 |
+| `sync_timeout_seconds` | 預設 `60`；每筆呼叫 message-services 的 timeout 秒數 |
+| `max_runtime_seconds` | 預設 `170`；本次 request 的執行預算秒數，剩餘時間不足一次 `sync_timeout_seconds` 時會提前停止 |
+
+實際補送時，message-services timeout / network error 會記錄在該筆 `results[]`，不會讓整個 maintenance endpoint 直接回 502。若因 `max_runtime_seconds` 提前停止，response 會包含 `stoppedEarly=true`、`stopReason` 與 `skippedCount`。
 
 先 dry-run 檢查：
 

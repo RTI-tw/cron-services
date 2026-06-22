@@ -1,5 +1,6 @@
 import os
 from datetime import datetime, timezone
+from time import monotonic
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import httpx
@@ -8,6 +9,9 @@ from .keystone_gql import execute_gql
 
 MESSAGE_SERVICES_ENV_VARS = ("MESSAGE_SERVICES_URL", "MESSAGE_SERVICES_BASE_URL")
 SUPPORTED_TARGETS = ("posts", "comments")
+DEFAULT_SYNC_TIMEOUT_SECONDS = 60.0
+DEFAULT_MAX_RUNTIME_SECONDS = 170.0
+CONNECT_TIMEOUT_SECONDS = 30.0
 
 QUERY_POSTS_MISSING_TRANSLATION = """
 query PostsMissingTranslation(
@@ -227,7 +231,18 @@ def _call_sync_translations(
     base_url: str,
     payload: Dict[str, Any],
 ) -> Dict[str, Any]:
-    resp = client.post(f"{base_url}/hooks/sync-translations", json=payload)
+    try:
+        resp = client.post(f"{base_url}/hooks/sync-translations", json=payload)
+    except httpx.RequestError as e:
+        return {
+            "id": payload.get("id"),
+            "type": payload.get("type"),
+            "ok": False,
+            "status_code": None,
+            "error_type": type(e).__name__,
+            "error": str(e) or type(e).__name__,
+        }
+
     body_preview = resp.text[:2000]
     ok = 200 <= resp.status_code < 300
     result: Dict[str, Any] = {
@@ -254,10 +269,17 @@ def retry_missing_translations(
     message_services_url: str = "",
     post_statuses: str = "published,pending,draft",
     comment_statuses: str = "published",
+    sync_timeout_seconds: float = DEFAULT_SYNC_TIMEOUT_SECONDS,
+    max_runtime_seconds: float = DEFAULT_MAX_RUNTIME_SECONDS,
 ) -> Dict[str, Any]:
     if limit <= 0:
         raise ValueError("limit 必須大於 0")
+    if sync_timeout_seconds <= 0:
+        raise ValueError("sync_timeout_seconds 必須大於 0")
+    if max_runtime_seconds <= 0:
+        raise ValueError("max_runtime_seconds 必須大於 0")
 
+    started_at = monotonic()
     normalized_targets = _normalize_targets(targets)
     post_status_filter = _parse_statuses(post_statuses)
     comment_status_filter = _parse_statuses(comment_statuses)
@@ -301,31 +323,46 @@ def retry_missing_translations(
             "attemptedCount": 0,
             "successCount": 0,
             "failureCount": 0,
+            "stoppedEarly": False,
+            "stopReason": None,
+            "skippedCount": 0,
             "results": [],
         }
 
     results: List[Dict[str, Any]] = []
-    timeout = httpx.Timeout(180.0, connect=30.0)
+    payloads: List[Dict[str, Any]] = []
+    for row in found.get("posts", {}).get("items", []):
+        payloads.append(_post_payload(row))
+    for row in found.get("comments", {}).get("items", []):
+        payloads.append(_comment_payload(row))
+
+    stopped_early = False
+    stop_reason = None
+    timeout = httpx.Timeout(
+        sync_timeout_seconds,
+        connect=min(CONNECT_TIMEOUT_SECONDS, sync_timeout_seconds),
+    )
     with httpx.Client(timeout=timeout) as client:
-        for row in found.get("posts", {}).get("items", []):
-            results.append(
-                _call_sync_translations(
-                    client,
-                    base_url=resolved_message_services_url,
-                    payload=_post_payload(row),
+        for payload in payloads:
+            elapsed_seconds = monotonic() - started_at
+            if elapsed_seconds + sync_timeout_seconds > max_runtime_seconds:
+                stopped_early = True
+                stop_reason = (
+                    "max_runtime_seconds budget would be exceeded before the next "
+                    "sync request"
                 )
-            )
-        for row in found.get("comments", {}).get("items", []):
+                break
             results.append(
                 _call_sync_translations(
                     client,
                     base_url=resolved_message_services_url,
-                    payload=_comment_payload(row),
+                    payload=payload,
                 )
             )
 
     success_count = sum(1 for r in results if r.get("ok") is True)
     failure_count = len(results) - success_count
+    skipped_count = len(payloads) - len(results)
     return {
         "generatedAt": datetime.now(timezone.utc).isoformat(),
         "dryRun": False,
@@ -344,5 +381,8 @@ def retry_missing_translations(
         "attemptedCount": len(results),
         "successCount": success_count,
         "failureCount": failure_count,
+        "stoppedEarly": stopped_early,
+        "stopReason": stop_reason,
+        "skippedCount": skipped_count,
         "results": results,
     }

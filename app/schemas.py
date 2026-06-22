@@ -251,6 +251,18 @@ class RetryMissingTranslationsRequest(BaseModel):
         default="published",
         description="Comment status 篩選，逗號分隔；傳 all 表示不篩狀態",
     )
+    sync_timeout_seconds: float = Field(
+        default=60.0,
+        ge=1,
+        le=180,
+        description="每次呼叫 message-services /hooks/sync-translations 的 timeout 秒數",
+    )
+    max_runtime_seconds: float = Field(
+        default=170.0,
+        ge=1,
+        le=3600,
+        description="本次 maintenance request 的執行預算秒數；剩餘時間不足一次 sync timeout 時會提前停止",
+    )
 
 
 class ImportRtiRssPostsRequest(BaseModel):

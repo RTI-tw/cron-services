@@ -374,6 +374,22 @@ def _retry_missing_translations_query(
         default="published",
         description=schemas.RetryMissingTranslationsRequest.model_fields["comment_statuses"].description,
     ),
+    sync_timeout_seconds: float = Query(
+        default=60.0,
+        ge=1,
+        le=180,
+        description=schemas.RetryMissingTranslationsRequest.model_fields[
+            "sync_timeout_seconds"
+        ].description,
+    ),
+    max_runtime_seconds: float = Query(
+        default=170.0,
+        ge=1,
+        le=3600,
+        description=schemas.RetryMissingTranslationsRequest.model_fields[
+            "max_runtime_seconds"
+        ].description,
+    ),
 ) -> schemas.RetryMissingTranslationsRequest:
     return schemas.RetryMissingTranslationsRequest(
         targets=targets,
@@ -382,6 +398,8 @@ def _retry_missing_translations_query(
         message_services_url=message_services_url,
         post_statuses=post_statuses,
         comment_statuses=comment_statuses,
+        sync_timeout_seconds=sync_timeout_seconds,
+        max_runtime_seconds=max_runtime_seconds,
     )
 
 
@@ -978,6 +996,8 @@ async def maintenance_retry_missing_translations(
             message_services_url=body.message_services_url,
             post_statuses=body.post_statuses,
             comment_statuses=body.comment_statuses,
+            sync_timeout_seconds=body.sync_timeout_seconds,
+            max_runtime_seconds=body.max_runtime_seconds,
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
