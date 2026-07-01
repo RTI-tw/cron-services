@@ -288,7 +288,7 @@ GET /export/posts-sitemap-to-gcs?prefix=json/sitemaps&base_url=https://example.c
 
 - `footer.json`：`contents`（欄位只取 `id/slug/title/order/status`）
 - `editor-choices.json`：輸出所有 `state=active` 的 picks，`orderBy=[{ sortOrder: asc }]`，以分頁抓取後合併
-- `pop-polls.json`：固定 `take=3`，條件 `expiresAt > now(ISO)`，排序 `totalVotes desc`
+- `pop-polls.json`：固定 `take=3`，條件 `expiresAt` 未設定或 `expiresAt > now(ISO)`，排序 `voterCount desc`
 - `curated-images.json`：輸出 `status=active` 的首頁策展圖片，`orderBy=[{ sortOrder: asc }]`
 
 Query 參數：
