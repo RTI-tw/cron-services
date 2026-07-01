@@ -8,7 +8,7 @@ import httpx
 from .keystone_gql import execute_gql
 
 MESSAGE_SERVICES_ENV_VARS = ("MESSAGE_SERVICES_URL", "MESSAGE_SERVICES_BASE_URL")
-SUPPORTED_TARGETS = ("posts", "comments")
+SUPPORTED_TARGETS = ("posts", "comments", "polls", "pollOptions")
 DEFAULT_SYNC_TIMEOUT_SECONDS = 60.0
 DEFAULT_MAX_RUNTIME_SECONDS = 170.0
 CONNECT_TIMEOUT_SECONDS = 30.0
@@ -72,6 +72,10 @@ def _normalize_targets(value: str) -> List[str]:
             key = "posts"
         elif target in ("comment", "comments"):
             key = "comments"
+        elif target in ("poll", "polls"):
+            key = "polls"
+        elif target in ("polloption", "polloptions", "poll_option", "poll_options"):
+            key = "pollOptions"
         else:
             raise ValueError(f"不支援的 target: {target}")
         if key not in normalized:
@@ -207,6 +211,130 @@ def _comment_summary(row: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+QUERY_POLLS_MISSING_TRANSLATION = """
+query PollsMissingTranslation(
+  $where: PollWhereInput! = {}
+  $orderBy: [PollOrderByInput!]! = [{ createdAt: asc }]
+  $take: Int
+  $skip: Int! = 0
+) {
+  polls(where: $where, orderBy: $orderBy, take: $take, skip: $skip) {
+    id
+    title
+    createdAt
+    updatedAt
+  }
+  pollsCount(where: $where)
+}
+"""
+
+QUERY_POLL_OPTIONS_MISSING_TRANSLATION = """
+query PollOptionsMissingTranslation(
+  $where: PollOptionWhereInput! = {}
+  $orderBy: [PollOptionOrderByInput!]! = [{ createdAt: asc }]
+  $take: Int
+  $skip: Int! = 0
+) {
+  pollOptions(where: $where, orderBy: $orderBy, take: $take, skip: $skip) {
+    id
+    text
+    createdAt
+    updatedAt
+  }
+  pollOptionsCount(where: $where)
+}
+"""
+
+
+def _build_poll_where() -> Dict[str, Any]:
+    # 有原文標題、但至少一個翻譯欄位仍為空（= 尚未翻譯）。
+    return {
+        "title": {"not": {"equals": ""}},
+        "OR": [
+            {"title_zh": {"equals": ""}},
+            {"title_en": {"equals": ""}},
+            {"title_vi": {"equals": ""}},
+            {"title_id": {"equals": ""}},
+            {"title_th": {"equals": ""}},
+        ],
+    }
+
+
+def _build_poll_option_where() -> Dict[str, Any]:
+    return {
+        "text": {"not": {"equals": ""}},
+        "OR": [
+            {"text_zh": {"equals": ""}},
+            {"text_en": {"equals": ""}},
+            {"text_vi": {"equals": ""}},
+            {"text_id": {"equals": ""}},
+            {"text_th": {"equals": ""}},
+        ],
+    }
+
+
+def _fetch_polls_missing_translation(*, take: int) -> Tuple[List[Dict[str, Any]], int]:
+    data = execute_gql(
+        QUERY_POLLS_MISSING_TRANSLATION,
+        {
+            "where": _build_poll_where(),
+            "take": take,
+            "skip": 0,
+            "orderBy": [{"createdAt": "asc"}],
+        },
+    )
+    return data.get("polls") or [], _to_int(data.get("pollsCount"))
+
+
+def _fetch_poll_options_missing_translation(
+    *, take: int
+) -> Tuple[List[Dict[str, Any]], int]:
+    data = execute_gql(
+        QUERY_POLL_OPTIONS_MISSING_TRANSLATION,
+        {
+            "where": _build_poll_option_where(),
+            "take": take,
+            "skip": 0,
+            "orderBy": [{"createdAt": "asc"}],
+        },
+    )
+    return data.get("pollOptions") or [], _to_int(data.get("pollOptionsCount"))
+
+
+def _poll_payload(row: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "type": "poll",
+        "id": str(row.get("id") or ""),
+        "source_text": str(row.get("title") or ""),
+    }
+
+
+def _poll_option_payload(row: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "type": "pollOption",
+        "id": str(row.get("id") or ""),
+        "source_text": str(row.get("text") or ""),
+    }
+
+
+def _poll_summary(row: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "id": row.get("id"),
+        "titleLength": len(str(row.get("title") or "")),
+        "createdAt": row.get("createdAt"),
+        "updatedAt": row.get("updatedAt"),
+    }
+
+
+def _poll_option_summary(row: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "id": row.get("id"),
+        "textLength": len(str(row.get("text") or "")),
+        "createdAt": row.get("createdAt"),
+        "updatedAt": row.get("updatedAt"),
+    }
+
+
 def _summarize_found(found: Dict[str, Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
     summarized: Dict[str, Dict[str, Any]] = {}
     for key, value in found.items():
@@ -215,6 +343,10 @@ def _summarize_found(found: Dict[str, Dict[str, Any]]) -> Dict[str, Dict[str, An
             summarized_items = [_post_summary(row) for row in items]
         elif key == "comments":
             summarized_items = [_comment_summary(row) for row in items]
+        elif key == "polls":
+            summarized_items = [_poll_summary(row) for row in items]
+        elif key == "pollOptions":
+            summarized_items = [_poll_option_summary(row) for row in items]
         else:
             summarized_items = []
         summarized[key] = {
@@ -310,6 +442,22 @@ def retry_missing_translations(
             "items": comments,
         }
 
+    if "polls" in normalized_targets:
+        polls, total = _fetch_polls_missing_translation(take=limit)
+        found["polls"] = {
+            "totalCount": total,
+            "selectedCount": len(polls),
+            "items": polls,
+        }
+
+    if "pollOptions" in normalized_targets:
+        poll_options, total = _fetch_poll_options_missing_translation(take=limit)
+        found["pollOptions"] = {
+            "totalCount": total,
+            "selectedCount": len(poll_options),
+            "items": poll_options,
+        }
+
     if dry_run:
         return {
             "generatedAt": datetime.now(timezone.utc).isoformat(),
@@ -335,6 +483,10 @@ def retry_missing_translations(
         payloads.append(_post_payload(row))
     for row in found.get("comments", {}).get("items", []):
         payloads.append(_comment_payload(row))
+    for row in found.get("polls", {}).get("items", []):
+        payloads.append(_poll_payload(row))
+    for row in found.get("pollOptions", {}).get("items", []):
+        payloads.append(_poll_option_payload(row))
 
     stopped_early = False
     stop_reason = None
