@@ -182,10 +182,11 @@ query GetPolls(
     title_th
     expiresAt
     totalVotes
+    voterCount
     post {
       id
     }
-    options {
+    options(orderBy: [{ sortOrder: asc }, { id: asc }]) {
       id
       text
       text_zh
@@ -194,6 +195,7 @@ query GetPolls(
       text_id
       text_th
       voteCount
+      sortOrder
     }
   }
   pollsCount(where: $where)
@@ -306,7 +308,7 @@ def _build_home_payloads(*, include: Set[str]) -> Tuple[Dict[str, Dict[str, Any]
                 "take": 3,
                 "skip": 0,
                 "where": {"expiresAt": {"gt": now_iso}},
-                "orderBy": [{"totalVotes": "desc"}],
+                "orderBy": [{"voterCount": "desc"}],
             },
         )
         payloads["pop-polls.json"] = pop_polls_data
