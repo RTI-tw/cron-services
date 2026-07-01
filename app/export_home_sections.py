@@ -186,7 +186,7 @@ query GetPolls(
     post {
       id
     }
-    options {
+    options(orderBy: [{ sortOrder: asc }, { id: asc }]) {
       id
       text
       text_zh
@@ -195,6 +195,7 @@ query GetPolls(
       text_id
       text_th
       voteCount
+      sortOrder
     }
   }
   pollsCount(where: $where)
