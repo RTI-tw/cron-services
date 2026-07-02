@@ -307,7 +307,12 @@ def _build_home_payloads(*, include: Set[str]) -> Tuple[Dict[str, Dict[str, Any]
             {
                 "take": 3,
                 "skip": 0,
-                "where": {"expiresAt": {"gt": now_iso}},
+                "where": {
+                    "OR": [
+                        {"expiresAt": {"equals": None}},
+                        {"expiresAt": {"gt": now_iso}},
+                    ]
+                },
                 "orderBy": [{"voterCount": "desc"}],
             },
         )
