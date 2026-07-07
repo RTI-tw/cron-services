@@ -50,6 +50,7 @@ _POST_CARD_SELECTION = f"""
       }}
       customId
       isOfficial
+      isCoCreationPartner
     }}
     isEditorChoice
     isLifeGuide
