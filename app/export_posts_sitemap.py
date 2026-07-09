@@ -11,10 +11,16 @@ from .export_topic_posts import _apply_cache_control, _normalize_prefix, _to_int
 from .keystone_gql import execute_gql
 
 LANGUAGES = ("zh", "en", "vi", "id", "th")
+# The frontend's browsable list pages. Every route here must stay in step with
+# app/[lang]/(feed)/ — the app serves no sitemap of its own, so a route missing
+# from this tuple is a route missing from the sitemap.
 STATIC_PAGE_PATH_TEMPLATES = (
     "/{lang}",
-    "/{lang}/editors-pick",
     "/{lang}/topics",
+    "/{lang}/editors-pick",
+    "/{lang}/life-guide",
+    "/{lang}/rti-choice",
+    "/{lang}/events",
 )
 BASE_URL_ENV_VARS = (
     "SITE_BASE_URL",
