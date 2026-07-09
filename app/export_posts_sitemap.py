@@ -11,6 +11,11 @@ from .export_topic_posts import _apply_cache_control, _normalize_prefix, _to_int
 from .keystone_gql import execute_gql
 
 LANGUAGES = ("zh", "en", "vi", "id", "th")
+STATIC_PAGE_PATH_TEMPLATES = (
+    "/{lang}",
+    "/{lang}/editors-pick",
+    "/{lang}/topics",
+)
 BASE_URL_ENV_VARS = (
     "SITE_BASE_URL",
     "PUBLIC_SITE_URL",
@@ -82,10 +87,17 @@ def _post_url(base_url: str, url_template: str, lang: str, post: Dict[str, Any])
 
 def _content_url(base_url: str, content_url_template: str, lang: str, content: Dict[str, Any]) -> str:
     identifier = quote(str(content.get("identifier") or "").strip(), safe="")
-    path = (content_url_template or "/{lang}/{identifier}").format(
+    path = (content_url_template or "/{lang}/content/{identifier}").format(
         lang=lang,
         identifier=identifier,
     )
+    if not path.startswith("/"):
+        path = f"/{path}"
+    return f"{base_url}{path}"
+
+
+def _static_page_url(base_url: str, path_template: str, lang: str) -> str:
+    path = path_template.format(lang=lang)
     if not path.startswith("/"):
         path = f"/{path}"
     return f"{base_url}{path}"
@@ -110,6 +122,18 @@ def _content_url_entries(
         for lang in LANGUAGES
     }
     lastmod = str(content.get("updatedAt") or datetime.now(timezone.utc).isoformat())
+    return [(alternates[lang], lastmod, alternates) for lang in LANGUAGES]
+
+
+def _static_page_url_entries(
+    path_template: str,
+    base_url: str,
+    lastmod: str,
+) -> List[Tuple[str, str, Dict[str, str]]]:
+    alternates = {
+        lang: _static_page_url(base_url, path_template, lang)
+        for lang in LANGUAGES
+    }
     return [(alternates[lang], lastmod, alternates) for lang in LANGUAGES]
 
 
@@ -139,6 +163,16 @@ def _build_post_entries_by_item(
     return [
         _post_url_entries(post, base_url, url_template)
         for post in posts
+    ]
+
+
+def _build_static_page_entries_by_item(
+    base_url: str,
+    lastmod: str,
+) -> List[List[Tuple[str, str, Dict[str, str]]]]:
+    return [
+        _static_page_url_entries(path_template, base_url, lastmod)
+        for path_template in STATIC_PAGE_PATH_TEMPLATES
     ]
 
 
@@ -239,7 +273,7 @@ def export_posts_sitemap_to_gcs(
     prefix: str = "exports/sitemaps",
     base_url: str = "",
     url_template: str = "/{lang}/posts/{id}",
-    content_url_template: str = "/{lang}/{identifier}",
+    content_url_template: str = "/{lang}/content/{identifier}",
     page_size: int = 200,
     max_urls_per_file: int = 50000,
     cache_control_seconds: Optional[int] = None,
@@ -289,6 +323,11 @@ def export_posts_sitemap_to_gcs(
             uploaded_paths.append(object_path)
             sitemap_index_entries.append((f"{normalized_base_url}/{object_path}", now_iso))
 
+    page_chunks = _chunk_sitemap_entries(
+        _build_static_page_entries_by_item(normalized_base_url, now_iso),
+        max_urls_per_file,
+    )
+    _upload_sitemap_chunks("pages", page_chunks)
     _upload_sitemap_chunks("posts", post_chunks)
     _upload_sitemap_chunks("contents", content_chunks)
 
@@ -310,8 +349,11 @@ def export_posts_sitemap_to_gcs(
         "posts_total_count": total_count,
         "contents_count": len(contents),
         "contents_total_count": contents_total_count,
-        "url_count": (len(posts) + len(contents)) * len(LANGUAGES),
-        "sitemap_files_count": len(post_chunks) + len(content_chunks),
+        "static_pages_count": len(STATIC_PAGE_PATH_TEMPLATES),
+        "static_page_url_count": len(STATIC_PAGE_PATH_TEMPLATES) * len(LANGUAGES),
+        "url_count": (len(posts) + len(contents) + len(STATIC_PAGE_PATH_TEMPLATES)) * len(LANGUAGES),
+        "sitemap_files_count": len(page_chunks) + len(post_chunks) + len(content_chunks),
+        "page_sitemap_files_count": len(page_chunks),
         "post_sitemap_files_count": len(post_chunks),
         "content_sitemap_files_count": len(content_chunks),
         "max_urls_per_file": max_urls_per_file,

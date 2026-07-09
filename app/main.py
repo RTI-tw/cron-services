@@ -20,6 +20,7 @@ from .export_curated_posts import (
     export_curated_posts_pops_to_gcs,
     export_curated_posts_to_gcs,
 )
+from .export_events import export_events_to_gcs
 from .export_forbidden_keywords import export_forbidden_keywords_to_gcs
 from .export_home_sections import (
     export_home_curated_images_to_gcs,
@@ -192,6 +193,23 @@ def _export_ads_query(
     )
 
 
+def _export_events_query(
+    prefix: str = Query(
+        default="exports/events",
+        description=schemas.ExportEventsToGcsRequest.model_fields["prefix"].description,
+    ),
+    cache_control_seconds: Optional[int] = Query(
+        default=_CACHE_CONTROL_DEFAULT_SECONDS,
+        ge=0,
+        description=_CACHE_CONTROL_DESCRIPTION,
+    ),
+) -> schemas.ExportEventsToGcsRequest:
+    return schemas.ExportEventsToGcsRequest(
+        prefix=prefix,
+        cache_control_seconds=cache_control_seconds,
+    )
+
+
 def _export_posts_sitemap_query(
     prefix: str = Query(
         default="exports/sitemaps",
@@ -206,7 +224,7 @@ def _export_posts_sitemap_query(
         description=schemas.ExportPostsSitemapToGcsRequest.model_fields["url_template"].description,
     ),
     content_url_template: str = Query(
-        default="/{lang}/{identifier}",
+        default="/{lang}/content/{identifier}",
         description=schemas.ExportPostsSitemapToGcsRequest.model_fields["content_url_template"].description,
     ),
     page_size: int = Query(
@@ -742,6 +760,32 @@ async def export_ads(
         raise HTTPException(status_code=502, detail=str(e)) from e
 
 
+@app.get("/export/events-to-gcs")
+async def export_events(
+    body: Annotated[
+        schemas.ExportEventsToGcsRequest,
+        Depends(_export_events_query),
+    ],
+):
+    """
+    輸出活動預覽卡 previews.json（hot / more / past）並上傳 GCS。
+    """
+    try:
+        return await asyncio.to_thread(
+            export_events_to_gcs,
+            prefix=body.prefix,
+            cache_control_seconds=body.cache_control_seconds,
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+    except RuntimeError as e:
+        logger.warning("export/events-to-gcs RuntimeError: %s", e)
+        raise HTTPException(status_code=503, detail=_runtime_error_http_detail(e)) from e
+    except Exception as e:  # noqa: BLE001
+        logger.exception("export/events-to-gcs failed: %s", e)
+        raise HTTPException(status_code=502, detail=str(e)) from e
+
+
 @app.get("/export/posts-sitemap-to-gcs")
 async def export_posts_sitemap(
     body: Annotated[
@@ -750,7 +794,7 @@ async def export_posts_sitemap(
     ],
 ):
     """
-    依 published posts 產出 Google Search sitemap.xml 並上傳 GCS。
+    依重要靜態頁、published posts 與 contents 產出 Google Search sitemap.xml 並上傳 GCS。
     """
     try:
         return await asyncio.to_thread(
