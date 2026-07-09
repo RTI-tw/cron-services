@@ -22,6 +22,14 @@ resized {
 urlOriginal
 """
 
+# Member.isCoCreationPartner only exists once forum-cms 375d67d is deployed to the
+# target backend. Selecting it against an older one fails GraphQL validation, which
+# rejects the whole query and freezes every export that shares this selection. Opt in
+# per environment; drop the flag once every backend has the field.
+_CO_CREATION_PARTNER_FIELD = (
+    "      isCoCreationPartner\n" if (os.getenv("EXPORT_CO_CREATION_PARTNER") or "").strip() == "true" else ""
+)
+
 _POST_CARD_SELECTION = f"""
     id
     title
@@ -50,8 +58,7 @@ _POST_CARD_SELECTION = f"""
       }}
       customId
       isOfficial
-      isCoCreationPartner
-    }}
+{_CO_CREATION_PARTNER_FIELD}    }}
     isEditorChoice
     isLifeGuide
     isRtiChoice
