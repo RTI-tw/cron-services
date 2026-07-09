@@ -101,9 +101,13 @@ class ExportPostsSitemapTest(unittest.TestCase):
                         base_url="https://www.rtitalk.tw",
                     )
 
+        expected_url_count = len(export_posts_sitemap.STATIC_PAGE_PATH_TEMPLATES) * len(
+            export_posts_sitemap.LANGUAGES
+        )
+
         self.assertIn("json/sitemaps/pages-sitemap-1.xml", result["files"])
         self.assertEqual(result["page_sitemap_files_count"], 1)
-        self.assertEqual(result["static_page_url_count"], 15)
+        self.assertEqual(result["static_page_url_count"], expected_url_count)
 
         index_xml = bucket.blobs["json/sitemaps/sitemap.xml"].uploaded
         self.assertIn(
@@ -115,8 +119,11 @@ class ExportPostsSitemapTest(unittest.TestCase):
         self.assertIn("<loc>https://www.rtitalk.tw/zh</loc>", pages_xml)
         self.assertIn("<loc>https://www.rtitalk.tw/zh/editors-pick</loc>", pages_xml)
         self.assertIn("<loc>https://www.rtitalk.tw/zh/topics</loc>", pages_xml)
+        self.assertIn("<loc>https://www.rtitalk.tw/zh/life-guide</loc>", pages_xml)
+        self.assertIn("<loc>https://www.rtitalk.tw/zh/rti-choice</loc>", pages_xml)
+        self.assertIn("<loc>https://www.rtitalk.tw/zh/events</loc>", pages_xml)
         self.assertIn("<loc>https://www.rtitalk.tw/en</loc>", pages_xml)
-        self.assertEqual(pages_xml.count("<url>"), 15)
+        self.assertEqual(pages_xml.count("<url>"), expected_url_count)
 
     def test_export_uses_frontend_content_route_by_default(self):
         bucket = FakeBucket()
