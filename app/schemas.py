@@ -80,6 +80,18 @@ class ExportAdsToGcsRequest(BaseModel):
     )
 
 
+class ExportEventsToGcsRequest(BaseModel):
+    prefix: str = Field(
+        default="exports/events",
+        description="GCS 目錄前綴（不含時間戳）；寫入 previews.json，每次覆寫",
+    )
+    cache_control_seconds: Optional[int] = Field(
+        default=_CACHE_CONTROL_DEFAULT_SECONDS,
+        ge=0,
+        description=_CACHE_CONTROL_DESCRIPTION,
+    )
+
+
 class ExportPostsSitemapToGcsRequest(BaseModel):
     prefix: str = Field(
         default="exports/sitemaps",
