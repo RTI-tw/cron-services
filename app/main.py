@@ -224,7 +224,7 @@ def _export_posts_sitemap_query(
         description=schemas.ExportPostsSitemapToGcsRequest.model_fields["url_template"].description,
     ),
     content_url_template: str = Query(
-        default="/{lang}/{identifier}",
+        default="/{lang}/content/{identifier}",
         description=schemas.ExportPostsSitemapToGcsRequest.model_fields["content_url_template"].description,
     ),
     page_size: int = Query(
@@ -794,7 +794,7 @@ async def export_posts_sitemap(
     ],
 ):
     """
-    依 published posts 產出 Google Search sitemap.xml 並上傳 GCS。
+    依重要靜態頁、published posts 與 contents 產出 Google Search sitemap.xml 並上傳 GCS。
     """
     try:
         return await asyncio.to_thread(
