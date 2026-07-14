@@ -29,10 +29,13 @@ BASE_URL_ENV_VARS = (
     "BASE_URL",
 )
 
+# A post that backs an event 307-redirects to /{lang}/events/{slug}, so listing it
+# here would fill the sitemap with URLs that never answer 200. The event itself is
+# listed instead, by QUERY_EVENTS_FOR_SITEMAP.
 QUERY_PUBLISHED_POSTS_FOR_SITEMAP = """
 query PublishedPostsForSitemap($skip: Int!, $take: Int!) {
   posts(
-    where: { status: { equals: published } }
+    where: { status: { equals: published }, events: { none: {} } }
     orderBy: [{ published_date: desc }, { createdAt: desc }]
     skip: $skip
     take: $take
@@ -42,7 +45,45 @@ query PublishedPostsForSitemap($skip: Int!, $take: Int!) {
     updatedAt
     createdAt
   }
-  postsCount(where: { status: { equals: published } })
+  postsCount(where: { status: { equals: published }, events: { none: {} } })
+}
+"""
+
+# Event detail pages are server-rendered and carry their own title, description and
+# Event JSON-LD, but nothing linked to them and nothing listed them, so they were
+# invisible to a crawler. An event with no published post 404s, hence the filter.
+QUERY_EVENTS_FOR_SITEMAP = """
+query EventsForSitemap($skip: Int!, $take: Int!) {
+  events(
+    where: { post: { status: { equals: published } } }
+    orderBy: [{ startAt: desc }]
+    skip: $skip
+    take: $take
+  ) {
+    slug
+    updatedAt
+    post {
+      updatedAt
+    }
+  }
+  eventsCount(where: { post: { status: { equals: published } } })
+}
+"""
+
+# An inactive topic has no browsable page (the post cards hide its chip), so only
+# active ones belong here.
+QUERY_TOPICS_FOR_SITEMAP = """
+query TopicsForSitemap($skip: Int!, $take: Int!) {
+  topics(
+    where: { state: { equals: active } }
+    orderBy: [{ sortOrder: asc }, { id: asc }]
+    skip: $skip
+    take: $take
+  ) {
+    slug
+    updatedAt
+  }
+  topicsCount(where: { state: { equals: active } })
 }
 """
 
@@ -107,6 +148,39 @@ def _static_page_url(base_url: str, path_template: str, lang: str) -> str:
     if not path.startswith("/"):
         path = f"/{path}"
     return f"{base_url}{path}"
+
+
+def _slug_url(base_url: str, url_template: str, lang: str, item: Dict[str, Any]) -> str:
+    slug = quote(str(item.get("slug") or "").strip(), safe="")
+    path = url_template.format(lang=lang, slug=slug)
+    if not path.startswith("/"):
+        path = f"/{path}"
+    return f"{base_url}{path}"
+
+
+def _parse_iso(value: str) -> Optional[datetime]:
+    try:
+        return datetime.fromisoformat(str(value).strip().replace("Z", "+00:00"))
+    except (TypeError, ValueError):
+        return None
+
+
+def _latest_lastmod(lastmods: List[str], fallback: str) -> str:
+    """Newest of the given timestamps, compared as dates rather than as strings —
+    Keystone mixes 'Z' and '+00:00' and those don't sort lexicographically."""
+    parsed = [(dt, raw) for raw in lastmods if (dt := _parse_iso(raw)) is not None]
+    if not parsed:
+        return fallback
+    return max(parsed, key=lambda pair: pair[0])[1]
+
+
+def _event_lastmod(event: Dict[str, Any]) -> str:
+    """An event page renders its post, so either changing is a change to the page."""
+    post = event.get("post") or {}
+    return _latest_lastmod(
+        [str(event.get("updatedAt") or ""), str(post.get("updatedAt") or "")],
+        datetime.now(timezone.utc).isoformat(),
+    )
 
 
 def _post_url_entries(post: Dict[str, Any], base_url: str, url_template: str) -> List[Tuple[str, str, Dict[str, str]]]:
@@ -182,6 +256,47 @@ def _build_static_page_entries_by_item(
     ]
 
 
+def _slug_url_entries(
+    item: Dict[str, Any],
+    base_url: str,
+    url_template: str,
+    lastmod: str,
+) -> List[Tuple[str, str, Dict[str, str]]]:
+    alternates = {
+        lang: _slug_url(base_url, url_template, lang, item)
+        for lang in LANGUAGES
+    }
+    return [(alternates[lang], lastmod, alternates) for lang in LANGUAGES]
+
+
+def _build_event_entries_by_item(
+    events: List[Dict[str, Any]],
+    base_url: str,
+    event_url_template: str,
+) -> List[List[Tuple[str, str, Dict[str, str]]]]:
+    return [
+        _slug_url_entries(event, base_url, event_url_template, _event_lastmod(event))
+        for event in events
+    ]
+
+
+def _build_topic_entries_by_item(
+    topics: List[Dict[str, Any]],
+    base_url: str,
+    topic_url_template: str,
+) -> List[List[Tuple[str, str, Dict[str, str]]]]:
+    fallback = datetime.now(timezone.utc).isoformat()
+    return [
+        _slug_url_entries(
+            topic,
+            base_url,
+            topic_url_template,
+            _latest_lastmod([str(topic.get("updatedAt") or "")], fallback),
+        )
+        for topic in topics
+    ]
+
+
 def _build_content_entries_by_item(
     contents: List[Dict[str, Any]],
     base_url: str,
@@ -228,50 +343,57 @@ def _build_sitemap_index_xml(sitemap_urls: List[Tuple[str, str]]) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _fetch_published_posts(page_size: int) -> tuple[List[Dict[str, Any]], int]:
-    posts: List[Dict[str, Any]] = []
+def _fetch_all(
+    query: str,
+    list_key: str,
+    count_key: str,
+    page_size: int,
+    keep=lambda item: True,
+) -> tuple[List[Dict[str, Any]], int]:
+    """Page through a list query until it runs dry. `page_size` is the page size, not
+    a cap: every published item ends up in the sitemap."""
+    items: List[Dict[str, Any]] = []
     total_count = 0
     skip = 0
 
     while True:
-        data = execute_gql(
-            QUERY_PUBLISHED_POSTS_FOR_SITEMAP,
-            {"skip": skip, "take": page_size},
-        )
-        page_posts = data.get("posts") or []
-        total_count = _to_int(data.get("postsCount"))
-        if not page_posts:
+        data = execute_gql(query, {"skip": skip, "take": page_size})
+        page = data.get(list_key) or []
+        total_count = _to_int(data.get(count_key))
+        if not page:
             break
-        posts.extend(page_posts)
-        skip += len(page_posts)
-        if len(page_posts) < page_size:
+        items.extend(item for item in page if keep(item))
+        skip += len(page)
+        if len(page) < page_size:
             break
 
-    return posts, total_count
+    return items, total_count
+
+
+def _has_slug(item: Dict[str, Any]) -> bool:
+    return bool(str(item.get("slug") or "").strip())
+
+
+def _fetch_published_posts(page_size: int) -> tuple[List[Dict[str, Any]], int]:
+    return _fetch_all(QUERY_PUBLISHED_POSTS_FOR_SITEMAP, "posts", "postsCount", page_size)
 
 
 def _fetch_published_contents(page_size: int) -> tuple[List[Dict[str, Any]], int]:
-    contents: List[Dict[str, Any]] = []
-    total_count = 0
-    skip = 0
+    return _fetch_all(
+        QUERY_PUBLISHED_CONTENTS_FOR_SITEMAP,
+        "contents",
+        "contentsCount",
+        page_size,
+        keep=lambda c: bool(str(c.get("identifier") or "").strip()),
+    )
 
-    while True:
-        data = execute_gql(
-            QUERY_PUBLISHED_CONTENTS_FOR_SITEMAP,
-            {"skip": skip, "take": page_size},
-        )
-        page_contents = data.get("contents") or []
-        total_count = _to_int(data.get("contentsCount"))
-        if not page_contents:
-            break
-        contents.extend(
-            c for c in page_contents if str(c.get("identifier") or "").strip()
-        )
-        skip += len(page_contents)
-        if len(page_contents) < page_size:
-            break
 
-    return contents, total_count
+def _fetch_events(page_size: int) -> tuple[List[Dict[str, Any]], int]:
+    return _fetch_all(QUERY_EVENTS_FOR_SITEMAP, "events", "eventsCount", page_size, keep=_has_slug)
+
+
+def _fetch_topics(page_size: int) -> tuple[List[Dict[str, Any]], int]:
+    return _fetch_all(QUERY_TOPICS_FOR_SITEMAP, "topics", "topicsCount", page_size, keep=_has_slug)
 
 
 def export_posts_sitemap_to_gcs(
@@ -280,6 +402,8 @@ def export_posts_sitemap_to_gcs(
     base_url: str = "",
     url_template: str = "/{lang}/posts/{id}",
     content_url_template: str = "/{lang}/content/{identifier}",
+    event_url_template: str = "/{lang}/events/{slug}",
+    topic_url_template: str = "/{lang}/topics/{slug}",
     page_size: int = 200,
     max_urls_per_file: int = 50000,
     cache_control_seconds: Optional[int] = None,
@@ -298,12 +422,23 @@ def export_posts_sitemap_to_gcs(
     normalized_base_url = _normalize_base_url(base_url)
     posts, total_count = _fetch_published_posts(page_size)
     contents, contents_total_count = _fetch_published_contents(page_size)
+    events, events_total_count = _fetch_events(page_size)
+    topics, topics_total_count = _fetch_topics(page_size)
+
     post_chunks = _chunk_sitemap_entries(
         _build_post_entries_by_item(posts, normalized_base_url, url_template),
         max_urls_per_file,
     )
     content_chunks = _chunk_sitemap_entries(
         _build_content_entries_by_item(contents, normalized_base_url, content_url_template),
+        max_urls_per_file,
+    )
+    event_chunks = _chunk_sitemap_entries(
+        _build_event_entries_by_item(events, normalized_base_url, event_url_template),
+        max_urls_per_file,
+    )
+    topic_chunks = _chunk_sitemap_entries(
+        _build_topic_entries_by_item(topics, normalized_base_url, topic_url_template),
         max_urls_per_file,
     )
 
@@ -329,12 +464,19 @@ def export_posts_sitemap_to_gcs(
             uploaded_paths.append(object_path)
             sitemap_index_entries.append((f"{normalized_base_url}/{object_path}", now_iso))
 
+    # The listing pages are feeds of posts, so they change when a post does. Stamping
+    # them with the export time instead — as this did — told Google every one of them
+    # was freshly updated on every run, which is a claim it learns to discount.
+    static_pages_lastmod = _latest_lastmod([_post_lastmod(post) for post in posts], now_iso)
+
     page_chunks = _chunk_sitemap_entries(
-        _build_static_page_entries_by_item(normalized_base_url, now_iso),
+        _build_static_page_entries_by_item(normalized_base_url, static_pages_lastmod),
         max_urls_per_file,
     )
     _upload_sitemap_chunks("pages", page_chunks)
     _upload_sitemap_chunks("posts", post_chunks)
+    _upload_sitemap_chunks("events", event_chunks)
+    _upload_sitemap_chunks("topics", topic_chunks)
     _upload_sitemap_chunks("contents", content_chunks)
 
     index_path = f"{base_dir}/sitemap.xml" if base_dir else "sitemap.xml"
@@ -355,15 +497,28 @@ def export_posts_sitemap_to_gcs(
         "posts_total_count": total_count,
         "contents_count": len(contents),
         "contents_total_count": contents_total_count,
+        "events_count": len(events),
+        "events_total_count": events_total_count,
+        "topics_count": len(topics),
+        "topics_total_count": topics_total_count,
         "static_pages_count": len(STATIC_PAGE_PATH_TEMPLATES),
         "static_page_url_count": len(STATIC_PAGE_PATH_TEMPLATES) * len(LANGUAGES),
-        "url_count": (len(posts) + len(contents) + len(STATIC_PAGE_PATH_TEMPLATES)) * len(LANGUAGES),
-        "sitemap_files_count": len(page_chunks) + len(post_chunks) + len(content_chunks),
+        "url_count": (
+            len(posts) + len(contents) + len(events) + len(topics) + len(STATIC_PAGE_PATH_TEMPLATES)
+        )
+        * len(LANGUAGES),
+        "sitemap_files_count": (
+            len(page_chunks) + len(post_chunks) + len(event_chunks) + len(topic_chunks) + len(content_chunks)
+        ),
         "page_sitemap_files_count": len(page_chunks),
         "post_sitemap_files_count": len(post_chunks),
+        "event_sitemap_files_count": len(event_chunks),
+        "topic_sitemap_files_count": len(topic_chunks),
         "content_sitemap_files_count": len(content_chunks),
         "max_urls_per_file": max_urls_per_file,
         "base_url": normalized_base_url,
         "url_template": url_template,
         "content_url_template": content_url_template,
+        "event_url_template": event_url_template,
+        "topic_url_template": topic_url_template,
     }
