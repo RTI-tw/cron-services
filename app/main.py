@@ -768,7 +768,7 @@ async def export_events(
     ],
 ):
     """
-    輸出活動預覽卡 previews.json（hot / more / past）並上傳 GCS。
+    輸出活動預覽卡 previews.json 與首頁推廣活動 homepage.json 並上傳 GCS。
     """
     try:
         return await asyncio.to_thread(

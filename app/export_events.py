@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from google.cloud import storage
 
@@ -57,6 +57,47 @@ query GetEventPreviewsForExport {
 }
 """
 
+QUERY_HOMEPAGE_EVENTS = """
+query GetHomepageEventsForExport($now: DateTime!) {
+  events(
+    where: {
+      isPromoted: { equals: true }
+      post: { status: { equals: published } }
+      OR: [{ endAt: { equals: null } }, { endAt: { gte: $now } }]
+    }
+  ) {
+    id
+    slug
+    label
+    isPromoted
+    startAt
+    endAt
+    registrationStartAt
+    registrationEndAt
+    capacity
+    registrationCount: registrationsCount(
+      where: { status: { in: [registered, checkedIn] } }
+    )
+    post {
+      title
+      title_zh
+      title_en
+      title_vi
+      title_id
+      title_th
+      heroImages(orderBy: { sortOrder: asc }, take: 1) {
+        id
+        urlOriginal
+        altText
+        file {
+          url
+        }
+      }
+    }
+  }
+}
+"""
+
 SECTIONS = ("hot", "more", "past")
 
 
@@ -71,13 +112,75 @@ def _build_events_payload(
     return payload
 
 
+def _parse_datetime(value: Any) -> Optional[datetime]:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _pick_homepage_event(
+    events: List[Dict[str, Any]],
+    now: datetime,
+) -> Optional[Dict[str, Any]]:
+    dated_events = [
+        (event, start_at)
+        for event in events
+        if event.get("isPromoted") is True
+        and (start_at := _parse_datetime(event.get("startAt"))) is not None
+    ]
+    if not dated_events:
+        return None
+    return min(
+        dated_events,
+        key=lambda item: (abs((item[1] - now).total_seconds()), str(item[0].get("id") or "")),
+    )[0]
+
+
+def _build_homepage_payload(
+    events: List[Dict[str, Any]],
+    generated_at: str,
+) -> Dict[str, Any]:
+    now = _parse_datetime(generated_at) or datetime.now(timezone.utc)
+    selected = _pick_homepage_event(events, now)
+    if selected is None:
+        return {"generatedAt": generated_at, "event": None}
+
+    event = dict(selected)
+    post = event.pop("post", None) or {}
+    images = post.get("heroImages") or []
+    first_image = None
+    if images:
+        first_image = dict(images[0])
+        file_data = first_image.pop("file", None) or {}
+        first_image["urlOriginal"] = first_image.get("urlOriginal") or file_data.get("url")
+
+    event.update(
+        {
+            "title": post.get("title"),
+            "title_zh": post.get("title_zh"),
+            "title_en": post.get("title_en"),
+            "title_vi": post.get("title_vi"),
+            "title_id": post.get("title_id"),
+            "title_th": post.get("title_th"),
+            "firstImage": first_image,
+        }
+    )
+    return {"generatedAt": generated_at, "event": event}
+
+
 def export_events_to_gcs(
     *,
     prefix: str = "exports/events",
     cache_control_seconds: Optional[int] = None,
 ) -> Dict[str, Any]:
     """
-    輸出 previews.json：活動預覽卡（hot / more / past 三段），每次覆寫。
+    輸出 previews.json 與 homepage.json，每次覆寫。
 
     不含 availabilityStatus 與 isRegistered，兩者由前端推導 / 疊加。
     """
@@ -89,19 +192,24 @@ def export_events_to_gcs(
     now_iso = datetime.now(timezone.utc).isoformat()
     data = execute_gql(QUERY_EVENT_PREVIEWS)
     payload = _build_events_payload(data.get("eventPreviews") or {}, now_iso)
+    homepage_data = execute_gql(QUERY_HOMEPAGE_EVENTS, {"now": now_iso})
+    homepage_payload = _build_homepage_payload(homepage_data.get("events") or [], now_iso)
 
     base_dir = _normalize_prefix(prefix)
     object_path = f"{base_dir}/previews.json" if base_dir else "previews.json"
+    homepage_object_path = f"{base_dir}/homepage.json" if base_dir else "homepage.json"
 
     storage_client = storage.Client()
     bucket = storage_client.bucket(bucket_name)
     _upload_json(bucket, object_path, payload, cache_control_seconds)
+    _upload_json(bucket, homepage_object_path, homepage_payload, cache_control_seconds)
 
     return {
         "bucket": bucket_name,
         "prefix": base_dir,
-        "files": [object_path],
+        "files": [object_path, homepage_object_path],
         "events_count": payload["eventsCount"],
+        "homepage_event_id": (homepage_payload.get("event") or {}).get("id"),
         "sections": {section: len(payload[section]) for section in SECTIONS},
         "now": now_iso,
     }
